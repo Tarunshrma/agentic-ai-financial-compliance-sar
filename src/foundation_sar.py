@@ -97,8 +97,28 @@ class AccountData(BaseModel):
     HINT: Use float for monetary amounts
     HINT: current_balance can be negative for overdrafts
     """
-    # TODO: Implement the AccountData schema
-    pass
+    account_id: str = Field(..., description="Unique account identifier")
+    customer_id: str = Field(..., description="Customer identifier")
+    account_type: str = Field(..., description="Account type")
+    opening_date: str = Field(..., description="Opening date in YYYY-MM-DD format")
+    current_balance: float = Field(..., description="Current account balance")
+    average_monthly_balance: float = Field(..., description="Average monthly balance")
+    status: Literal["Active", "Closed", "Suspended"] = Field(
+        ..., description="Account status"
+    )
+
+    @field_validator("opening_date")
+    @classmethod
+    def validate_opening_date(cls, value: str) -> str:
+        datetime.strptime(value, "%Y-%m-%d")
+        return value
+
+    @field_validator("average_monthly_balance")
+    @classmethod
+    def validate_average_balance(cls, value: float) -> float:
+        if value < 0:
+            raise ValueError("average_monthly_balance cannot be negative")
+        return value
 
 class TransactionData(BaseModel):
     """Transaction information schema with validation
