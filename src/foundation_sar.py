@@ -177,8 +177,63 @@ class CaseData(BaseModel):
     HINT: Use @field_validator('transactions') with @classmethod decorator
     HINT: Check if not v: raise ValueError("message") for empty validation
     """
-    # TODO: Implement the CaseData schema with validation
-    pass
+    case_id: str = Field(..., description="Unique case identifier")
+    customer: CustomerData = Field(..., description="Customer data")
+    accounts: List[AccountData] = Field(..., description="Customer accounts")
+    transactions: List[TransactionData] = Field(..., description="Customer transactions")
+    case_created_at: str = Field(..., description="Case creation timestamp")
+    data_sources: Dict[str, str] = Field(..., description="Data source tracking")
+
+    @field_validator("transactions")
+    @classmethod
+    def validate_transactions_not_empty(
+        cls, value: List[TransactionData]
+    ) -> List[TransactionData]:
+        if not value:
+            raise ValueError("transactions list cannot be empty")
+        return value
+
+    @field_validator("case_created_at")
+    @classmethod
+    def validate_case_created_at(cls, value: str) -> str:
+        datetime.fromisoformat(value)
+        return value
+
+    @field_validator("accounts")
+    @classmethod
+    def validate_accounts_not_empty(
+        cls, value: List[AccountData]
+    ) -> List[AccountData]:
+        if value is None:
+            raise ValueError("accounts list cannot be None")
+        return value
+
+    @field_validator("data_sources")
+    @classmethod
+    def validate_data_sources(cls, value: Dict[str, str]) -> Dict[str, str]:
+        if not value:
+            raise ValueError("data_sources must include at least one source")
+        return value
+
+    @field_validator("accounts", mode="after")
+    @classmethod
+    def validate_accounts_customer_match(cls, value: List[AccountData], info):
+        customer = info.data.get("customer")
+        if customer and value:
+            for account in value:
+                if account.customer_id != customer.customer_id:
+                    raise ValueError("account customer_id must match case customer_id")
+        return value
+
+    @field_validator("transactions", mode="after")
+    @classmethod
+    def validate_transactions_account_match(cls, value: List[TransactionData], info):
+        accounts = info.data.get("accounts") or []
+        account_ids = {account.account_id for account in accounts}
+        for transaction in value:
+            if account_ids and transaction.account_id not in account_ids:
+                raise ValueError("transaction account_id must match case accounts")
+        return value
 
 class RiskAnalystOutput(BaseModel):
     """Risk Analyst agent structured output
