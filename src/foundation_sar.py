@@ -277,8 +277,14 @@ class ComplianceOfficerOutput(BaseModel):
     HINT: Use Field(..., max_length=500) for reasoning length limit
     HINT: Use bool type for completeness_check
     """
-    # TODO: Implement the ComplianceOfficerOutput schema
-    pass
+    narrative: str = Field(..., max_length=1000, description="Regulatory narrative")
+    narrative_reasoning: str = Field(
+        ..., max_length=500, description="Reasoning for narrative construction"
+    )
+    regulatory_citations: List[str] = Field(
+        ..., description="List of relevant regulatory citations"
+    )
+    completeness_check: bool = Field(..., description="Whether narrative is complete")
 
 # ===== TODO: IMPLEMENT AUDIT LOGGING =====
 
