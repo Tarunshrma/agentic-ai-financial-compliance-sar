@@ -319,7 +319,8 @@ class ExplainabilityLogger:
     
     def __init__(self, log_file: str = "sar_audit.jsonl"):
         # TODO: Initialize with log_file path and empty entries list
-        pass
+        self.log_file = log_file
+        self.entries: List[Dict[str, Any]] = []
     
     def log_agent_action(self, agent_type: str, action: str, case_id: str, 
                         input_data: Dict, output_data: Dict, reasoning: str, 
@@ -337,7 +338,21 @@ class ExplainabilityLogger:
         HINT: Convert input_data and output_data to strings with str()
         """
         # TODO: Implement logging with structured entry creation and file writing
-        pass
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "case_id": case_id,
+            "agent_type": agent_type,
+            "action": action,
+            "input_summary": str(input_data),
+            "output_summary": str(output_data),
+            "reasoning": reasoning,
+            "execution_time_ms": execution_time_ms,
+            "success": success,
+            "error_message": error_message,
+        }
+        self.entries.append(entry)
+        with open(self.log_file, "a", encoding="utf-8") as log_handle:
+            log_handle.write(json.dumps(entry) + "\n")
 
 # ===== TODO: IMPLEMENT DATA LOADER =====
 
