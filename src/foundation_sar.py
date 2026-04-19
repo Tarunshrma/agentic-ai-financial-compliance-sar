@@ -139,8 +139,21 @@ class TransactionData(BaseModel):
     HINT: amount can be negative for debits/withdrawals
     HINT: Use descriptive field descriptions for clarity
     """
-    # TODO: Implement the TransactionData schema
-    pass
+    transaction_id: str = Field(..., description="Unique transaction identifier")
+    account_id: str = Field(..., description="Account identifier")
+    transaction_date: str = Field(..., description="Transaction date in YYYY-MM-DD format")
+    transaction_type: str = Field(..., description="Transaction type")
+    amount: float = Field(..., description="Transaction amount (negative for debits)")
+    description: str = Field(..., description="Transaction description")
+    method: str = Field(..., description="Transaction method")
+    counterparty: Optional[str] = Field(None, description="Transaction counterparty")
+    location: Optional[str] = Field(None, description="Transaction location")
+
+    @field_validator("transaction_date")
+    @classmethod
+    def validate_transaction_date(cls, value: str) -> str:
+        datetime.strptime(value, "%Y-%m-%d")
+        return value
 
 class CaseData(BaseModel):
     """Unified case object combining all data sources
