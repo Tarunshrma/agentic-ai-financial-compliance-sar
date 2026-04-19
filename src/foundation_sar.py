@@ -249,8 +249,17 @@ class RiskAnalystOutput(BaseModel):
     HINT: Use Field(..., ge=0.0, le=1.0) for confidence_score validation
     HINT: Use Field(..., max_length=500) for reasoning length limit
     """
-    # TODO: Implement the RiskAnalystOutput schema
-    pass
+    classification: Literal[
+        "Structuring", "Sanctions", "Fraud", "Money_Laundering", "Other"
+    ] = Field(..., description="Suspicious activity classification")
+    confidence_score: float = Field(
+        ..., ge=0.0, le=1.0, description="Confidence score between 0.0 and 1.0"
+    )
+    reasoning: str = Field(..., max_length=500, description="Step-by-step reasoning")
+    key_indicators: List[str] = Field(..., description="Key suspicious indicators")
+    risk_level: Literal["Low", "Medium", "High", "Critical"] = Field(
+        ..., description="Overall risk level"
+    )
 
 class ComplianceOfficerOutput(BaseModel):
     """Compliance Officer agent structured output
