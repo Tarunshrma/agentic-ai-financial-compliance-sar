@@ -18,16 +18,16 @@ YOUR TASKS:
 
 import json
 import openai
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 from dotenv import load_dotenv
 
 # TODO: Import your foundation components
-# from foundation_sar import (
-#     RiskAnalystOutput, 
-#     ExplainabilityLogger, 
-#     CaseData
-# )
+from src.foundation_sar import (
+    RiskAnalystOutput,
+    ExplainabilityLogger,
+    CaseData,
+)
 
 # Load environment variables
 load_dotenv()
@@ -53,20 +53,41 @@ class RiskAnalystAgent:
             model: OpenAI model to use
         """
         # TODO: Initialize agent components
-        pass
+        self.openai_client = openai_client
+        self.logger = explainability_logger
+        self.model = model
         
         # TODO: Design Chain-of-Thought system prompt
-        self.system_prompt = """TODO: Create your Chain-of-Thought system prompt here
-        
-        Key elements to include:
-        - Agent persona as experienced financial crime analyst
-        - Structured reasoning framework (5 steps)
-        - Classification categories (Structuring, Sanctions, Fraud, Money_Laundering, Other)
-        - JSON output format specification
-        - Professional terminology and approach
-        """
+        self.system_prompt = """You are a senior financial crime Risk Analyst.
+Use Chain-of-Thought reasoning to analyze each case step-by-step.
 
-    def analyze_case(self, case_data) -> 'RiskAnalystOutput':  # Use quotes for forward reference
+Analysis Framework:
+1. Data Review: summarize customer, accounts, and transactions.
+2. Pattern Recognition: identify suspicious indicators.
+3. Regulatory Mapping: map indicators to known typologies.
+4. Risk Quantification: assess severity and confidence.
+5. Classification Decision: select best category.
+
+Classification categories:
+- Structuring
+- Sanctions
+- Fraud
+- Money_Laundering
+- Other
+
+Return ONLY valid JSON with this schema:
+{
+  "classification": "Structuring|Sanctions|Fraud|Money_Laundering|Other",
+  "confidence_score": 0.0,
+  "reasoning": "step-by-step analysis",
+  "key_indicators": ["indicator1", "indicator2"],
+  "risk_level": "Low|Medium|High|Critical"
+}
+
+Use professional regulatory language. Keep reasoning concise (<=500 chars).
+"""
+
+    def analyze_case(self, case_data: CaseData) -> RiskAnalystOutput:
         """
         Perform risk analysis on a case using Chain-of-Thought reasoning.
         
@@ -77,7 +98,58 @@ class RiskAnalystAgent:
         - Handles errors and logs operations
         - Returns validated RiskAnalystOutput
         """
-        pass
+        start_time = datetime.now(timezone.utc)
+        case_prompt = self._format_case_for_prompt(case_data)
+        try:
+            response = self.openai_client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": case_prompt},
+                ],
+                temperature=0.2,
+            )
+            content = response.choices[0].message.content or ""
+            json_text = self._extract_json_from_response(content)
+            parsed = json.loads(json_text)
+            result = RiskAnalystOutput(**parsed)
+            execution_time_ms = (
+                datetime.now(timezone.utc) - start_time
+            ).total_seconds() * 1000
+            self.logger.log_agent_action(
+                agent_type="RiskAnalyst",
+                action="analyze_case",
+                case_id=case_data.case_id,
+                input_data={
+                    "case_id": case_data.case_id,
+                    "accounts": len(case_data.accounts),
+                    "transactions": len(case_data.transactions),
+                },
+                output_data=result.model_dump(),
+                reasoning=result.reasoning,
+                execution_time_ms=execution_time_ms,
+            )
+            return result
+        except Exception as exc:
+            execution_time_ms = (
+                datetime.now(timezone.utc) - start_time
+            ).total_seconds() * 1000
+            self.logger.log_agent_action(
+                agent_type="RiskAnalyst",
+                action="analyze_case",
+                case_id=case_data.case_id,
+                input_data={
+                    "case_id": case_data.case_id,
+                    "accounts": len(case_data.accounts),
+                    "transactions": len(case_data.transactions),
+                },
+                output_data={},
+                reasoning="Risk analysis failed; see error message.",
+                execution_time_ms=execution_time_ms,
+                success=False,
+                error_message=str(exc),
+            )
+            raise
 
     def _extract_json_from_response(self, response_content: str) -> str:
         """Extract JSON content from LLM response
@@ -88,7 +160,28 @@ class RiskAnalystAgent:
         - Malformed responses
         - Empty responses
         """
-        pass
+        content = response_content.strip()
+        if not content:
+            raise ValueError("Empty response content")
+
+        if "```" in content:
+            start = content.find("```json")
+            if start != -1:
+                start += len("```json")
+            else:
+                start = content.find("```") + len("```")
+            end = content.find("```", start)
+            if end == -1:
+                raise ValueError("Unterminated JSON code block")
+            json_candidate = content[start:end].strip()
+            if json_candidate:
+                return json_candidate
+
+        start = content.find("{")
+        end = content.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise ValueError("No JSON object found in response")
+        return content[start : end + 1]
 
     def _format_case_for_prompt(self, case_data) -> str:
         """Format case data for the analysis prompt
@@ -99,7 +192,41 @@ class RiskAnalystAgent:
         - Transaction details with key metrics
         - Financial summary statistics
         """
-        pass
+        transaction_count = len(case_data.transactions)
+        total_amount = sum(txn.amount for txn in case_data.transactions)
+        avg_amount = total_amount / transaction_count if transaction_count else 0.0
+        transaction_lines = []
+        for txn in case_data.transactions[:5]:
+            transaction_lines.append(
+                f"- {txn.transaction_date} | {txn.transaction_type} | "
+                f"{txn.amount} | {txn.method} | {txn.description}"
+            )
+        transaction_summary = "\n".join(transaction_lines) or "No transactions."
+
+        return (
+            "Case Summary:\n"
+            f"Case ID: {case_data.case_id}\n\n"
+            "Customer Profile:\n"
+            f"- Name: {case_data.customer.name}\n"
+            f"- Customer ID: {case_data.customer.customer_id}\n"
+            f"- Risk Rating: {case_data.customer.risk_rating}\n"
+            f"- Customer Since: {case_data.customer.customer_since}\n\n"
+            "Accounts:\n"
+            + "\n".join(
+                [
+                    f"- {account.account_id} | {account.account_type} | "
+                    f"Balance: {account.current_balance} | Status: {account.status}"
+                    for account in case_data.accounts
+                ]
+            )
+            + "\n\n"
+            "Transactions (first 5):\n"
+            f"{transaction_summary}\n\n"
+            "Transaction Metrics:\n"
+            f"- Total transactions: {transaction_count}\n"
+            f"- Total amount: {total_amount}\n"
+            f"- Average amount: {avg_amount:.2f}\n"
+        )
 
 # ===== PROMPT ENGINEERING HELPERS =====
 
