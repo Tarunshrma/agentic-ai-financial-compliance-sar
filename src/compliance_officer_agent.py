@@ -18,17 +18,18 @@ YOUR TASKS:
 
 import json
 import openai
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 from dotenv import load_dotenv
 
 # TODO: Import your foundation components
-# from foundation_sar import (
-#     ComplianceOfficerOutput,
-#     ExplainabilityLogger, 
-#     CaseData,
-#     RiskAnalystOutput
-# )
+from src.foundation_sar import (
+    ComplianceOfficerOutput,
+    ExplainabilityLogger,
+    CaseData,
+    RiskAnalystOutput,
+    TransactionData,
+)
 
 # Load environment variables
 load_dotenv()
@@ -54,19 +55,36 @@ class ComplianceOfficerAgent:
             model: OpenAI model to use
         """
         # TODO: Initialize agent components
-        pass
+        self.client = openai_client
+        self.logger = explainability_logger
+        self.model = model
         
         # TODO: Design ReACT system prompt
-        self.system_prompt = """TODO: Create your ReACT system prompt here
-        
-        Key elements to include:
-        - Agent persona as senior compliance officer
-        - ReACT framework: Reasoning Phase + Action Phase
-        - Narrative constraints (≤120 words)
-        - Regulatory terminology requirements
-        - JSON output format specification
-        - BSA/AML compliance focus
-        """
+        self.system_prompt = """You are a senior Compliance Officer responsible for SAR narratives.
+Use the ReACT framework (Reasoning + Action) to produce a compliant narrative.
+This must align with BSA/AML expectations and FinCEN SAR requirements.
+
+REACT Framework:
+REASONING:
+1. Review the Risk Analyst findings.
+2. Identify regulatory requirements and narrative elements.
+3. Determine key suspicious activity details (who/what/when/where/why).
+4. Plan concise narrative structure.
+
+ACTION:
+1. Draft the SAR narrative (<=120 words).
+2. Include specific dates, amounts, and patterns.
+3. Use regulatory terminology (BSA/AML, SAR, suspicious activity).
+4. Provide citations where relevant.
+
+Return ONLY valid JSON with this schema:
+{
+  "narrative": "SAR narrative text (<=120 words)",
+  "narrative_reasoning": "Why this narrative meets compliance needs",
+  "regulatory_citations": ["citation1", "citation2"],
+  "completeness_check": true
+}
+"""
 
     def generate_compliance_narrative(self, case_data, risk_analysis) -> 'ComplianceOfficerOutput':
         """
@@ -80,7 +98,86 @@ class ComplianceOfficerAgent:
         - Parses and validates JSON response
         - Logs operations for audit
         """
-        pass
+        start_time = datetime.now(timezone.utc)
+        risk_summary = self._format_risk_analysis_for_prompt(risk_analysis)
+        transaction_summary = self._format_transactions_for_compliance(case_data.transactions)
+        prompt = (
+            "Case Context:\n"
+            f"Customer: {case_data.customer.name} ({case_data.customer.customer_id})\n"
+            f"Risk Rating: {case_data.customer.risk_rating}\n\n"
+            "Risk Analysis Summary:\n"
+            f"{risk_summary}\n\n"
+            "Transactions:\n"
+            f"{transaction_summary}\n"
+        )
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                max_tokens=800,
+            )
+            content = response.choices[0].message.content or ""
+            try:
+                json_text = self._extract_json_from_response(content)
+                parsed = json.loads(json_text)
+                result = ComplianceOfficerOutput(**parsed)
+            except Exception as exc:
+                execution_time_ms = (
+                    datetime.now(timezone.utc) - start_time
+                ).total_seconds() * 1000
+                self.logger.log_agent_action(
+                    agent_type="ComplianceOfficer",
+                    action="generate_narrative",
+                    case_id=case_data.case_id,
+                    input_data={"case_id": case_data.case_id},
+                    output_data={},
+                    reasoning="JSON parsing failed during compliance narrative generation.",
+                    execution_time_ms=execution_time_ms,
+                    success=False,
+                    error_message=str(exc),
+                )
+                raise ValueError("Failed to parse Compliance Officer JSON output") from exc
+
+            compliance_check = self._validate_narrative_compliance(result.narrative)
+            if not compliance_check["within_word_limit"]:
+                raise ValueError("Narrative exceeds 120 word limit")
+
+            execution_time_ms = (
+                datetime.now(timezone.utc) - start_time
+            ).total_seconds() * 1000
+            self.logger.log_agent_action(
+                agent_type="ComplianceOfficer",
+                action="generate_narrative",
+                case_id=case_data.case_id,
+                input_data={"case_id": case_data.case_id},
+                output_data=result.model_dump(),
+                reasoning=result.narrative_reasoning,
+                execution_time_ms=execution_time_ms,
+            )
+            return result
+        except ValueError:
+            raise
+        except Exception as exc:
+            execution_time_ms = (
+                datetime.now(timezone.utc) - start_time
+            ).total_seconds() * 1000
+            self.logger.log_agent_action(
+                agent_type="ComplianceOfficer",
+                action="generate_narrative",
+                case_id=case_data.case_id,
+                input_data={"case_id": case_data.case_id},
+                output_data={},
+                reasoning="Compliance narrative generation failed; see error message.",
+                execution_time_ms=execution_time_ms,
+                success=False,
+                error_message=str(exc),
+            )
+            raise
 
     def _extract_json_from_response(self, response_content: str) -> str:
         """Extract JSON content from LLM response
@@ -91,7 +188,28 @@ class ComplianceOfficerAgent:
         - Malformed responses
         - Empty responses
         """
-        pass
+        content = response_content.strip()
+        if not content:
+            raise ValueError("No JSON content found")
+
+        if "```" in content:
+            start = content.find("```json")
+            if start != -1:
+                start += len("```json")
+            else:
+                start = content.find("```") + len("```")
+            end = content.find("```", start)
+            if end == -1:
+                raise ValueError("No JSON content found")
+            json_candidate = content[start:end].strip()
+            if json_candidate:
+                return json_candidate
+
+        start = content.find("{")
+        end = content.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise ValueError("No JSON content found")
+        return content[start : end + 1]
 
     def _format_risk_analysis_for_prompt(self, risk_analysis) -> str:
         """Format risk analysis results for compliance prompt
@@ -102,7 +220,19 @@ class ComplianceOfficerAgent:
         - Risk level assessment
         - Analyst reasoning
         """
-        pass
+        return (
+            "Classification: {classification}\n"
+            "Confidence: {confidence:.2f}\n"
+            "Risk Level: {risk_level}\n"
+            "Key Indicators: {indicators}\n"
+            "Reasoning: {reasoning}".format(
+                classification=risk_analysis.classification,
+                confidence=risk_analysis.confidence_score,
+                risk_level=risk_analysis.risk_level,
+                indicators=", ".join(risk_analysis.key_indicators),
+                reasoning=risk_analysis.reasoning,
+            )
+        )
 
     def _validate_narrative_compliance(self, narrative: str) -> Dict[str, Any]:
         """Validate narrative meets regulatory requirements
@@ -113,7 +243,32 @@ class ComplianceOfficerAgent:
         - Appropriate terminology
         - Regulatory completeness
         """
-        pass
+        word_count = len(narrative.split())
+        requirements = get_regulatory_requirements()
+        required_terms = requirements["terminology"]
+        missing_terms = [
+            term for term in required_terms if term.lower() not in narrative.lower()
+        ]
+        return {
+            "word_count": word_count,
+            "within_word_limit": word_count <= requirements["word_limit"],
+            "missing_terms": missing_terms,
+        }
+
+    def _format_transactions_for_compliance(
+        self, transactions: List[TransactionData]
+    ) -> str:
+        if not transactions:
+            return "No transactions available."
+        lines = []
+        for idx, txn in enumerate(transactions, start=1):
+            amount = f"${txn.amount:,.2f}"
+            line = f"{idx}. {txn.transaction_date}: {amount} {txn.transaction_type}"
+            if txn.location:
+                line += f" at {txn.location}"
+            line += f" via {txn.method}"
+            lines.append(line)
+        return "\n".join(lines)
 
 # ===== REACT PROMPTING HELPERS =====
 
