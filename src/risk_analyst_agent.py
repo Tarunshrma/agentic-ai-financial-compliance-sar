@@ -27,6 +27,8 @@ from src.foundation_sar import (
     RiskAnalystOutput,
     ExplainabilityLogger,
     CaseData,
+    AccountData,
+    TransactionData,
 )
 
 # Load environment variables
@@ -53,7 +55,7 @@ class RiskAnalystAgent:
             model: OpenAI model to use
         """
         # TODO: Initialize agent components
-        self.openai_client = openai_client
+        self.client = openai_client
         self.logger = explainability_logger
         self.model = model
         
@@ -101,18 +103,40 @@ Use professional regulatory language. Keep reasoning concise (<=500 chars).
         start_time = datetime.now(timezone.utc)
         case_prompt = self._format_case_for_prompt(case_data)
         try:
-            response = self.openai_client.chat.completions.create(
+            response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": self.system_prompt},
                     {"role": "user", "content": case_prompt},
                 ],
-                temperature=0.2,
+                temperature=0.3,
+                max_tokens=1000,
             )
             content = response.choices[0].message.content or ""
-            json_text = self._extract_json_from_response(content)
-            parsed = json.loads(json_text)
-            result = RiskAnalystOutput(**parsed)
+            try:
+                json_text = self._extract_json_from_response(content)
+                parsed = json.loads(json_text)
+                result = RiskAnalystOutput(**parsed)
+            except Exception as exc:
+                execution_time_ms = (
+                    datetime.now(timezone.utc) - start_time
+                ).total_seconds() * 1000
+                self.logger.log_agent_action(
+                    agent_type="RiskAnalyst",
+                    action="analyze_case",
+                    case_id=case_data.case_id,
+                    input_data={
+                        "case_id": case_data.case_id,
+                        "accounts": len(case_data.accounts),
+                        "transactions": len(case_data.transactions),
+                    },
+                    output_data={},
+                    reasoning="JSON parsing failed during risk analysis.",
+                    execution_time_ms=execution_time_ms,
+                    success=False,
+                    error_message=str(exc),
+                )
+                raise ValueError("Failed to parse Risk Analyst JSON output") from exc
             execution_time_ms = (
                 datetime.now(timezone.utc) - start_time
             ).total_seconds() * 1000
@@ -130,6 +154,8 @@ Use professional regulatory language. Keep reasoning concise (<=500 chars).
                 execution_time_ms=execution_time_ms,
             )
             return result
+        except ValueError:
+            raise
         except Exception as exc:
             execution_time_ms = (
                 datetime.now(timezone.utc) - start_time
@@ -162,7 +188,7 @@ Use professional regulatory language. Keep reasoning concise (<=500 chars).
         """
         content = response_content.strip()
         if not content:
-            raise ValueError("Empty response content")
+            raise ValueError("No JSON content found")
 
         if "```" in content:
             start = content.find("```json")
@@ -180,8 +206,39 @@ Use professional regulatory language. Keep reasoning concise (<=500 chars).
         start = content.find("{")
         end = content.rfind("}")
         if start == -1 or end == -1 or end <= start:
-            raise ValueError("No JSON object found in response")
+            raise ValueError("No JSON content found")
         return content[start : end + 1]
+
+    def _format_accounts(self, accounts: List[AccountData]) -> str:
+        if not accounts:
+            return "No accounts available."
+        lines = []
+        for account in accounts:
+            lines.append(
+                "Account {account_id} ({account_type}): Current Balance {balance}, "
+                "Avg Monthly {avg_balance}, Status {status}".format(
+                    account_id=account.account_id,
+                    account_type=account.account_type,
+                    balance=f"${account.current_balance:,.2f}",
+                    avg_balance=f"${account.average_monthly_balance:,.2f}",
+                    status=account.status,
+                )
+            )
+        return "\n".join(lines)
+
+    def _format_transactions(self, transactions: List[TransactionData]) -> str:
+        if not transactions:
+            return "No transactions available."
+        lines = []
+        for idx, txn in enumerate(transactions, start=1):
+            amount = f"${txn.amount:,.2f}"
+            line = f"{idx}. {txn.transaction_date}: {txn.transaction_type} {amount}"
+            details = [txn.description, f"Method: {txn.method}"]
+            if txn.location:
+                details.append(f"Location: {txn.location}")
+            line += " - " + ", ".join(details)
+            lines.append(line)
+        return "\n".join(lines)
 
     def _format_case_for_prompt(self, case_data) -> str:
         """Format case data for the analysis prompt
@@ -195,13 +252,8 @@ Use professional regulatory language. Keep reasoning concise (<=500 chars).
         transaction_count = len(case_data.transactions)
         total_amount = sum(txn.amount for txn in case_data.transactions)
         avg_amount = total_amount / transaction_count if transaction_count else 0.0
-        transaction_lines = []
-        for txn in case_data.transactions[:5]:
-            transaction_lines.append(
-                f"- {txn.transaction_date} | {txn.transaction_type} | "
-                f"{txn.amount} | {txn.method} | {txn.description}"
-            )
-        transaction_summary = "\n".join(transaction_lines) or "No transactions."
+        account_summary = self._format_accounts(case_data.accounts)
+        transaction_summary = self._format_transactions(case_data.transactions[:5])
 
         return (
             "Case Summary:\n"
@@ -212,13 +264,7 @@ Use professional regulatory language. Keep reasoning concise (<=500 chars).
             f"- Risk Rating: {case_data.customer.risk_rating}\n"
             f"- Customer Since: {case_data.customer.customer_since}\n\n"
             "Accounts:\n"
-            + "\n".join(
-                [
-                    f"- {account.account_id} | {account.account_type} | "
-                    f"Balance: {account.current_balance} | Status: {account.status}"
-                    for account in case_data.accounts
-                ]
-            )
+            + account_summary
             + "\n\n"
             "Transactions (first 5):\n"
             f"{transaction_summary}\n\n"
