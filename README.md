@@ -2,15 +2,13 @@
 
 ## 📋 Project Overview
 
-**The Challenge:** As the newest AI Engineer on the financial crimes task force, you are at the forefront of the bank's defense against a rising tide of illicit transactions. The institution is grappling with increasingly complex schemes, from intricate money laundering operations to sophisticated fraud networks, and the pressure from regulators is mounting. 
+I built an **AI-powered Suspicious Activity Report (SAR) processing system** that automates financial crime detection using a multi-agent architecture. It mirrors real-world regulatory requirements that financial institutions face when detecting and reporting suspicious activity to authorities like FinCEN.
 
-Your mission is to architect and build an intelligent, two-pronged AI system that can not only think like a seasoned Risk Analyst to detect suspicious activities but also write like a Compliance Officer to articulate these findings in perfectly crafted Suspicious Activity Reports. This system will be the critical tool that empowers the compliance team to move faster, act with greater precision, and ultimately protect the integrity of the financial system, all while under the watchful eye of regulatory examiners who will scrutinize your work for its accuracy, efficiency, and transparency.
+The system pairs a **Risk Analyst agent** (Chain-of-Thought) with a **Compliance Officer agent** (ReACT) and adds a human decision gate plus an audit trail so outputs are explainable and reviewable.
 
-You will build an **AI-powered Suspicious Activity Report (SAR) processing system** that automates financial crime detection using a multi-agent architecture. This project simulates real-world regulatory requirements that financial institutions face when detecting and reporting suspicious activities to authorities like FinCEN.
+### 🎯 What This Project Demonstrates
 
-### 🎯 Learning Objectives
-
-By completing this project, you will:
+This project demonstrates how to:
 
 1. **Design Multi-Agent Systems**: Build cooperating AI agents with distinct responsibilities
 2. **Implement Prompting Strategies**: Apply Chain-of-Thought and ReACT prompting frameworks
@@ -25,6 +23,9 @@ Your system will consist of **two specialized AI agents**:
 ```
 📊 Data Processing → 🔍 Risk Analyst Agent → 👤 Human Review → ✅ Compliance Officer Agent → 📄 SAR Filing
 ```
+
+- **Architecture diagram:**
+  ![System Architecture](images/System%20Architecture%20SAR.png)
 
 - **Risk Analyst Agent**: Uses Chain-of-Thought reasoning to classify suspicious activities
 - **Compliance Officer Agent**: Uses ReACT prompting to generate regulatory narratives

@@ -2,11 +2,11 @@
 
 ## 📋 Project Description
 
-**Build an AI-powered Suspicious Activity Report (SAR) processing system** that automates financial crime detection using multi-agent architecture with Chain-of-Thought and ReACT prompting strategies.
+**I built an AI-powered Suspicious Activity Report (SAR) processing system** that automates financial crime detection using a multi-agent architecture with Chain-of-Thought and ReACT prompting strategies.
 
-### 🎯 What You'll Build
+### 🎯 What I Built
 
-You will create a complete SAR processing system that:
+This repository contains a complete SAR processing system that:
 - **Detects suspicious financial activity** using AI-powered pattern recognition
 - **Generates regulatory-compliant reports** for FinCEN submission
 - **Implements human-in-the-loop decision gates** for compliance oversight
@@ -49,7 +49,7 @@ starter/
     └── regulatory_context.md     # Real SAR requirements
 ```
 
-### 💻 **Code to Implement (Your Work)**
+### 💻 **Core Code Modules**
 
 ```
 starter/src/                       # Core modules you'll build
@@ -68,10 +68,10 @@ starter/
 │   └── audit_logs/              # Decision audit trails
 ```
 
-## � **Learning Path**
+## 🗺️ Build Phases (How I Organized the Work)
 
 ### **Phase 1: Foundation & Data Modeling**
-📖 **Start with:** `notebooks/01_data_exploration.ipynb`
+📖 **Entry point:** `notebooks/01_data_exploration.ipynb`
 🎯 **Goal:** Understand financial data and build foundation components
 
 **Tasks:**
