@@ -380,7 +380,7 @@ class DataLoader:
     
     def __init__(self, explainability_logger: ExplainabilityLogger):
         # TODO: Store logger for audit trail
-        pass
+        self.logger = explainability_logger
     
     def create_case_from_data(self, 
                             customer_data: Dict,
@@ -421,7 +421,75 @@ class DataLoader:
         HINT: Calculate execution_time_ms = (datetime.now() - start_time).total_seconds() * 1000
         """
         # TODO: Implement complete case creation with error handling and logging
-        pass
+        start_time = datetime.now(timezone.utc)
+        case_id = str(uuid.uuid4())
+        try:
+            customer = CustomerData(**customer_data)
+            accounts = [
+                AccountData(**account)
+                for account in account_data
+                if account.get("customer_id") == customer.customer_id
+            ]
+            account_ids = {account.account_id for account in accounts}
+            transactions = [
+                TransactionData(**transaction)
+                for transaction in transaction_data
+                if transaction.get("account_id") in account_ids
+            ]
+            data_sources = {
+                "customer_source": f"csv_extract_{start_time.strftime('%Y%m%d')}",
+                "account_source": f"csv_extract_{start_time.strftime('%Y%m%d')}",
+                "transaction_source": f"csv_extract_{start_time.strftime('%Y%m%d')}",
+            }
+            case = CaseData(
+                case_id=case_id,
+                customer=customer,
+                accounts=accounts,
+                transactions=transactions,
+                case_created_at=start_time.isoformat(),
+                data_sources=data_sources,
+            )
+            execution_time_ms = (
+                datetime.now(timezone.utc) - start_time
+            ).total_seconds() * 1000
+            self.logger.log_agent_action(
+                agent_type="DataLoader",
+                action="create_case",
+                case_id=case_id,
+                input_data={
+                    "customer_id": customer.customer_id,
+                    "account_rows": len(account_data),
+                    "transaction_rows": len(transaction_data),
+                },
+                output_data={
+                    "case_id": case_id,
+                    "accounts": len(accounts),
+                    "transactions": len(transactions),
+                },
+                reasoning="Built unified case from customer, account, and transaction data.",
+                execution_time_ms=execution_time_ms,
+            )
+            return case
+        except Exception as exc:
+            execution_time_ms = (
+                datetime.now(timezone.utc) - start_time
+            ).total_seconds() * 1000
+            self.logger.log_agent_action(
+                agent_type="DataLoader",
+                action="create_case",
+                case_id=case_id,
+                input_data={
+                    "customer_id": customer_data.get("customer_id"),
+                    "account_rows": len(account_data),
+                    "transaction_rows": len(transaction_data),
+                },
+                output_data={},
+                reasoning="Case creation failed; see error message.",
+                execution_time_ms=execution_time_ms,
+                success=False,
+                error_message=str(exc),
+            )
+            raise
 
 # ===== HELPER FUNCTIONS (PROVIDED) =====
 
