@@ -55,8 +55,31 @@ class CustomerData(BaseModel):
     HINT: Use Field(None, description="...") for optional fields
     HINT: Use Literal type for risk_rating to restrict values
     """
-    # TODO: Implement the CustomerData schema with proper fields and validation
-    pass
+    customer_id: str = Field(..., description="Unique customer identifier")
+    name: str = Field(..., description="Full customer name")
+    date_of_birth: str = Field(..., description="Date of birth in YYYY-MM-DD format")
+    ssn_last_4: str = Field(..., description="Last 4 digits of SSN only")
+    address: str = Field(..., description="Full address")
+    customer_since: str = Field(..., description="Customer since date in YYYY-MM-DD format")
+    risk_rating: Literal["Low", "Medium", "High"] = Field(
+        ..., description="Risk assessment rating"
+    )
+    phone: Optional[str] = Field(None, description="Phone number")
+    occupation: Optional[str] = Field(None, description="Occupation")
+    annual_income: Optional[int] = Field(None, description="Annual income")
+
+    @field_validator("date_of_birth", "customer_since")
+    @classmethod
+    def validate_date_format(cls, value: str) -> str:
+        datetime.strptime(value, "%Y-%m-%d")
+        return value
+
+    @field_validator("ssn_last_4")
+    @classmethod
+    def validate_ssn_last_4(cls, value: str) -> str:
+        if not value.isdigit() or len(value) != 4:
+            raise ValueError("ssn_last_4 must be 4 digits")
+        return value
 
 class AccountData(BaseModel):
     """Account information schema with validation
