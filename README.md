@@ -50,7 +50,7 @@ Your system will consist of **two specialized AI agents**:
 ### Prerequisites
 
 - Python 3.8+
-- Vocareum OpenAI API key (from your Udacity workspace "Cloud Resources")
+- Vocareum OpenAI API key 
 - VS Code with Jupyter extension (recommended)
 
 ### 1. Environment Setup
@@ -72,14 +72,10 @@ cp .env.template .env
 **Important:** This project uses Vocareum OpenAI API keys, not direct OpenAI keys.
 
 **Getting Your API Key:**
-1. In your Udacity workspace, click "Cloud Resources" in the navigation pane
+1. Create OpenAI Key
 2. Copy the provided OpenAI API key (starts with `voc-`)
 3. Paste it into your `.env` file as `OPENAI_API_KEY=voc-your-actual-key-here`
 
-**Key Differences:**
-- Vocareum keys start with `voc-` instead of `sk-`
-- API calls are routed through `https://openai.vocareum.com/v1`
-- Budget and usage are managed by Udacity through Vocareum
 
 ### 3. Project Structure
 
