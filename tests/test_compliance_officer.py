@@ -156,7 +156,13 @@ class TestComplianceOfficerAgent:
         risk_analysis = RiskAnalystOutput(
             classification="Structuring",
             confidence_score=0.85,
-            reasoning="Multiple transactions under threshold",
+            reasoning=(
+                "Step 1: Reviewed customer profile and transactions.\n"
+                "Step 2: Noted repeated deposits under threshold.\n"
+                "Step 3: Mapped behavior to structuring typology.\n"
+                "Step 4: Assessed high risk with strong indicators.\n"
+                "Step 5: Selected Structuring classification."
+            ),
             key_indicators=["threshold avoidance", "repeated amounts"],
             risk_level="High"
         )
@@ -235,7 +241,13 @@ class TestComplianceOfficerAgent:
         risk_analysis = RiskAnalystOutput(
             classification="Other",
             confidence_score=0.5,
-            reasoning="Test analysis",
+            reasoning=(
+                "Step 1: Reviewed customer profile.\n"
+                "Step 2: Identified limited indicators.\n"
+                "Step 3: No clear typology match.\n"
+                "Step 4: Assessed low risk severity.\n"
+                "Step 5: Selected Other classification."
+            ),
             key_indicators=["test"],
             risk_level="Low"
         )
@@ -292,19 +304,25 @@ class TestComplianceOfficerAgent:
         risk_analysis = RiskAnalystOutput(
             classification="Other",
             confidence_score=0.3,
-            reasoning="Error test",
+            reasoning=(
+                "Step 1: Reviewed profile context.\n"
+                "Step 2: Observed minimal suspicious activity.\n"
+                "Step 3: No typology alignment found.\n"
+                "Step 4: Assessed low risk severity.\n"
+                "Step 5: Selected Other classification."
+            ),
             key_indicators=["error"],
             risk_level="Low"
         )
         
-        # Should raise ValueError for invalid JSON
-        with pytest.raises(ValueError, match="Failed to parse Compliance Officer JSON output"):
-            agent.generate_compliance_narrative(case, risk_analysis)
-        
-        # Verify error was logged
+        result = agent.generate_compliance_narrative(case, risk_analysis)
+
+        assert result.completeness_check is False
+        assert "Parsing failed" in result.narrative
+
         assert len(logger.entries) == 1
         assert logger.entries[0]["success"] == False
-        assert "JSON parsing failed" in logger.entries[0]["reasoning"]
+        assert "Parsing failed" in logger.entries[0]["reasoning"]
         
         # Cleanup
         if os.path.exists("test_json_error.jsonl"):
@@ -420,7 +438,12 @@ This completes the analysis.'''
         mock_client = Mock()
         mock_response = Mock()
         mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''{"narrative": "Test narrative", "narrative_reasoning": "Test", "regulatory_citations": ["Test"], "completeness_check": true}'''
+        mock_response.choices[0].message.content = '''{
+            "narrative": "Customer API Test conducted multiple suspicious cash deposits totaling $10,000 over a two-day period to avoid a regulatory threshold, indicating potential structuring activity.",
+            "narrative_reasoning": "Includes customer, amounts, timeframe, and suspicious indicators for compliance.",
+            "regulatory_citations": ["31 CFR 1020.320 (SAR Filing)", "FinCEN SAR Instructions"],
+            "completeness_check": true
+        }'''
         mock_client.chat.completions.create.return_value = mock_response
         
         logger = ExplainabilityLogger("test_api_compliance.jsonl")
@@ -457,7 +480,13 @@ This completes the analysis.'''
         risk_analysis = RiskAnalystOutput(
             classification="Other",
             confidence_score=0.5,
-            reasoning="API test",
+            reasoning=(
+                "Step 1: Reviewed customer profile.\n"
+                "Step 2: Noted limited indicators.\n"
+                "Step 3: No clear typology match.\n"
+                "Step 4: Assessed low risk severity.\n"
+                "Step 5: Selected Other classification."
+            ),
             key_indicators=["test"],
             risk_level="Low"
         )

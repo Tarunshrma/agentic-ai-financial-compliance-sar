@@ -61,7 +61,7 @@ class RiskAnalystAgent:
         
         # TODO: Design Chain-of-Thought system prompt
         self.system_prompt = """You are a senior financial crime Risk Analyst.
-Use Chain-of-Thought reasoning to analyze each case step-by-step.
+Use Chain-of-Thought reasoning to analyze each case in 5 labeled steps.
 
 Analysis Framework:
 1. Data Review: summarize customer, accounts, and transactions.
@@ -69,6 +69,12 @@ Analysis Framework:
 3. Regulatory Mapping: map indicators to known typologies.
 4. Risk Quantification: assess severity and confidence.
 5. Classification Decision: select best category.
+
+Risk calibration rubric:
+- Critical: confidence >= 0.85 and multiple severe indicators
+- High: confidence 0.70–0.84 with clear suspicious patterns
+- Medium: confidence 0.40–0.69 with some indicators
+- Low: confidence < 0.40 with weak or minimal indicators
 
 Classification categories:
 - Structuring
@@ -81,7 +87,7 @@ Return ONLY valid JSON with this schema:
 {
   "classification": "Structuring|Sanctions|Fraud|Money_Laundering|Other",
   "confidence_score": 0.0,
-  "reasoning": "step-by-step analysis",
+  "reasoning": "Step 1: ...\nStep 2: ...\nStep 3: ...\nStep 4: ...\nStep 5: ...",
   "key_indicators": ["indicator1", "indicator2"],
   "risk_level": "Low|Medium|High|Critical"
 }
@@ -103,40 +109,43 @@ Use professional regulatory language. Keep reasoning concise (<=500 chars).
         start_time = datetime.now(timezone.utc)
         case_prompt = self._format_case_for_prompt(case_data)
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": case_prompt},
-                ],
-                temperature=0.3,
-                max_tokens=1000,
-            )
-            content = response.choices[0].message.content or ""
+            content = self._request_completion(case_prompt).choices[0].message.content or ""
             try:
                 json_text = self._extract_json_from_response(content)
                 parsed = json.loads(json_text)
                 result = RiskAnalystOutput(**parsed)
             except Exception as exc:
-                execution_time_ms = (
-                    datetime.now(timezone.utc) - start_time
-                ).total_seconds() * 1000
-                self.logger.log_agent_action(
-                    agent_type="RiskAnalyst",
-                    action="analyze_case",
-                    case_id=case_data.case_id,
-                    input_data={
-                        "case_id": case_data.case_id,
-                        "accounts": len(case_data.accounts),
-                        "transactions": len(case_data.transactions),
-                    },
-                    output_data={},
-                    reasoning="JSON parsing failed during risk analysis.",
-                    execution_time_ms=execution_time_ms,
-                    success=False,
-                    error_message=str(exc),
+                retry_prompt = (
+                    "Return ONLY valid JSON that matches the required schema. "
+                    "Do not include code fences or commentary.\n\n"
+                    + case_prompt
                 )
-                raise ValueError("Failed to parse Risk Analyst JSON output") from exc
+                try:
+                    content = self._request_completion(retry_prompt).choices[0].message.content or ""
+                    json_text = self._extract_json_from_response(content)
+                    parsed = json.loads(json_text)
+                    result = RiskAnalystOutput(**parsed)
+                except Exception:
+                    execution_time_ms = (
+                        datetime.now(timezone.utc) - start_time
+                    ).total_seconds() * 1000
+                    fallback = self._build_fallback_output()
+                    self.logger.log_agent_action(
+                        agent_type="RiskAnalyst",
+                        action="analyze_case",
+                        case_id=case_data.case_id,
+                        input_data={
+                            "case_id": case_data.case_id,
+                            "accounts": len(case_data.accounts),
+                            "transactions": len(case_data.transactions),
+                        },
+                        output_data=fallback.model_dump(),
+                        reasoning="Parsing failed; fallback output returned.",
+                        execution_time_ms=execution_time_ms,
+                        success=False,
+                        error_message=str(exc),
+                    )
+                    return fallback
             execution_time_ms = (
                 datetime.now(timezone.utc) - start_time
             ).total_seconds() * 1000
@@ -176,6 +185,32 @@ Use professional regulatory language. Keep reasoning concise (<=500 chars).
                 error_message=str(exc),
             )
             raise
+
+    def _request_completion(self, prompt: str):
+        return self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.3,
+            max_tokens=1000,
+        )
+
+    def _build_fallback_output(self) -> RiskAnalystOutput:
+        return RiskAnalystOutput(
+            classification="Other",
+            confidence_score=0.0,
+            reasoning=(
+                "Step 1: Parsing failed for analyst output.\n"
+                "Step 2: No reliable indicators extracted.\n"
+                "Step 3: Unable to map to typology.\n"
+                "Step 4: Defaulted to low risk due to uncertainty.\n"
+                "Step 5: Selected Other classification."
+            ),
+            key_indicators=["parsing_failed"],
+            risk_level="Low",
+        )
 
     def _extract_json_from_response(self, response_content: str) -> str:
         """Extract JSON content from LLM response

@@ -112,40 +112,53 @@ Return ONLY valid JSON with this schema:
         )
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.2,
-                max_tokens=800,
-            )
+            response = self._request_completion(prompt)
             content = response.choices[0].message.content or ""
             try:
                 json_text = self._extract_json_from_response(content)
                 parsed = json.loads(json_text)
                 result = ComplianceOfficerOutput(**parsed)
             except Exception as exc:
-                execution_time_ms = (
-                    datetime.now(timezone.utc) - start_time
-                ).total_seconds() * 1000
-                self.logger.log_agent_action(
-                    agent_type="ComplianceOfficer",
-                    action="generate_narrative",
-                    case_id=case_data.case_id,
-                    input_data={"case_id": case_data.case_id},
-                    output_data={},
-                    reasoning="JSON parsing failed during compliance narrative generation.",
-                    execution_time_ms=execution_time_ms,
-                    success=False,
-                    error_message=str(exc),
+                retry_prompt = (
+                    "Return ONLY valid JSON that matches the required schema. "
+                    "Do not include code fences or commentary.\n\n"
+                    + prompt
                 )
-                raise ValueError("Failed to parse Compliance Officer JSON output") from exc
+                try:
+                    content = self._request_completion(retry_prompt).choices[0].message.content or ""
+                    json_text = self._extract_json_from_response(content)
+                    parsed = json.loads(json_text)
+                    result = ComplianceOfficerOutput(**parsed)
+                except Exception:
+                    execution_time_ms = (
+                        datetime.now(timezone.utc) - start_time
+                    ).total_seconds() * 1000
+                    fallback = self._build_fallback_output()
+                    self.logger.log_agent_action(
+                        agent_type="ComplianceOfficer",
+                        action="generate_narrative",
+                        case_id=case_data.case_id,
+                        input_data={"case_id": case_data.case_id},
+                        output_data=fallback.model_dump(),
+                        reasoning="Parsing failed; fallback output returned.",
+                        execution_time_ms=execution_time_ms,
+                        success=False,
+                        error_message=str(exc),
+                    )
+                    return fallback
 
-            compliance_check = self._validate_narrative_compliance(result.narrative)
+            compliance_check = self._validate_narrative_compliance(
+                result.narrative, result.regulatory_citations
+            )
             if not compliance_check["within_word_limit"]:
                 raise ValueError("Narrative exceeds 120 word limit")
+            if not compliance_check["is_complete"]:
+                missing = ", ".join(compliance_check["missing_elements"])
+                raise ValueError(f"Narrative missing required elements: {missing}")
+
+            result = result.model_copy(
+                update={"completeness_check": compliance_check["is_complete"]}
+            )
 
             execution_time_ms = (
                 datetime.now(timezone.utc) - start_time
@@ -178,6 +191,25 @@ Return ONLY valid JSON with this schema:
                 error_message=str(exc),
             )
             raise
+
+    def _request_completion(self, prompt: str):
+        return self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            max_tokens=800,
+        )
+
+    def _build_fallback_output(self) -> ComplianceOfficerOutput:
+        return ComplianceOfficerOutput(
+            narrative="Parsing failed; manual review required.",
+            narrative_reasoning="Fallback narrative used due to parsing failure.",
+            regulatory_citations=[],
+            completeness_check=False,
+        )
 
     def _extract_json_from_response(self, response_content: str) -> str:
         """Extract JSON content from LLM response
@@ -234,7 +266,9 @@ Return ONLY valid JSON with this schema:
             )
         )
 
-    def _validate_narrative_compliance(self, narrative: str) -> Dict[str, Any]:
+    def _validate_narrative_compliance(
+        self, narrative: str, citations: List[str]
+    ) -> Dict[str, Any]:
         """Validate narrative meets regulatory requirements
         
         TODO: Implement validation that checks:
@@ -245,14 +279,67 @@ Return ONLY valid JSON with this schema:
         """
         word_count = len(narrative.split())
         requirements = get_regulatory_requirements()
+        narrative_lower = narrative.lower()
         required_terms = requirements["terminology"]
         missing_terms = [
-            term for term in required_terms if term.lower() not in narrative.lower()
+            term for term in required_terms if term.lower() not in narrative_lower
         ]
+        terminology_tokens = [
+            term.lower() for term in required_terms
+        ] + ["sar", "threshold", "suspicious"]
+        has_required_term = any(token in narrative_lower for token in terminology_tokens)
+        has_subject = "customer" in narrative_lower or "subject" in narrative_lower
+        has_activity = any(
+            token in narrative_lower
+            for token in [
+                "suspicious",
+                "structuring",
+                "fraud",
+                "sanction",
+                "money laundering",
+            ]
+        )
+        has_timeframe = any(
+            token in narrative_lower
+            for token in ["day", "week", "month", "year", "date", "period"]
+        )
+        has_amounts = any(char.isdigit() for char in narrative)
+        has_indicators = any(
+            token in narrative_lower for token in ["threshold", "pattern", "multiple"]
+        )
+        required_citation_tokens = [
+            "31 cfr 1020.320",
+            "12 cfr 21.11",
+            "fincen sar",
+            "31 usc 5324",
+        ]
+        citations_lower = [citation.lower() for citation in citations]
+        has_citations = bool(citations) and any(
+            token in citation for citation in citations_lower
+            for token in required_citation_tokens
+        )
+        missing_elements = []
+        if not has_subject:
+            missing_elements.append("subject")
+        if not has_activity:
+            missing_elements.append("activity")
+        if not has_timeframe:
+            missing_elements.append("timeframe")
+        if not has_amounts:
+            missing_elements.append("amounts")
+        if not has_indicators:
+            missing_elements.append("indicators")
+        if not has_required_term:
+            missing_elements.append("terminology")
+        if not has_citations:
+            missing_elements.append("citations")
+        is_complete = not missing_elements
         return {
             "word_count": word_count,
             "within_word_limit": word_count <= requirements["word_limit"],
             "missing_terms": missing_terms,
+            "missing_elements": missing_elements,
+            "is_complete": is_complete,
         }
 
     def _format_transactions_for_compliance(

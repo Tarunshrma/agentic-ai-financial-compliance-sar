@@ -16,7 +16,9 @@ try:
         TransactionData,
         CaseData,
         ExplainabilityLogger,
-        DataLoader
+        DataLoader,
+        load_csv_data,
+        _normalize_record
     )
     
     # Test if classes are actually implemented (not just empty pass statements)
@@ -277,6 +279,70 @@ class TestDataLoader:
         # Cleanup
         if os.path.exists("test_audit.jsonl"):
             os.remove("test_audit.jsonl")
+
+    @pytest.mark.skipif(not FOUNDATION_IMPLEMENTED, reason="Foundation not implemented yet")
+    def test_csv_data_integration(self):
+        """Test DataLoader can build a case from CSV files"""
+        logger = ExplainabilityLogger("test_csv_audit.jsonl")
+        loader = DataLoader(logger)
+
+        customers_df, _, _ = load_csv_data("data")
+        for candidate_id in customers_df["customer_id"]:
+            try:
+                loader.create_case_from_csv(candidate_id, "data")
+                sample_customer_id = candidate_id
+                break
+            except Exception:
+                continue
+        else:
+            raise AssertionError("No customer with transactions found in CSV data")
+
+        case = loader.create_case_from_csv(sample_customer_id, "data")
+        assert case.customer.customer_id == sample_customer_id
+        assert case.accounts
+        assert case.transactions
+
+        if os.path.exists("test_csv_audit.jsonl"):
+            os.remove("test_csv_audit.jsonl")
+
+class TestSampleDataValidation:
+    """Validate schemas against provided CSVs"""
+
+    @pytest.mark.skipif(not FOUNDATION_IMPLEMENTED, reason="Foundation not implemented yet")
+    def test_csv_schema_validation_summary(self):
+        customers_df, accounts_df, transactions_df = load_csv_data("data")
+
+        customer_failures = []
+        for row in customers_df.to_dict(orient="records"):
+            try:
+                CustomerData(**_normalize_record(row))
+            except Exception as exc:
+                customer_failures.append(str(exc))
+
+        account_failures = []
+        for row in accounts_df.to_dict(orient="records"):
+            try:
+                AccountData(**_normalize_record(row))
+            except Exception as exc:
+                account_failures.append(str(exc))
+
+        transaction_failures = []
+        for row in transactions_df.to_dict(orient="records"):
+            try:
+                TransactionData(**_normalize_record(row))
+            except Exception as exc:
+                transaction_failures.append(str(exc))
+
+        summary = (
+            f"Customers: {len(customers_df) - len(customer_failures)}/{len(customers_df)} "
+            f"Accounts: {len(accounts_df) - len(account_failures)}/{len(accounts_df)} "
+            f"Transactions: {len(transactions_df) - len(transaction_failures)}/{len(transactions_df)}"
+        )
+        print(f"CSV schema validation summary: {summary}")
+
+        assert not customer_failures, f"Customer validation failures. {summary}"
+        assert not account_failures, f"Account validation failures. {summary}"
+        assert not transaction_failures, f"Transaction validation failures. {summary}"
 
 class TestExplainabilityLogger:
     """Test ExplainabilityLogger audit functionality"""

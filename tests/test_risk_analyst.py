@@ -105,7 +105,7 @@ class TestRiskAnalystAgent:
 {
     "classification": "Structuring",
     "confidence_score": 0.85,
-    "reasoning": "Multiple transactions just under $10,000 threshold suggest structuring",
+    "reasoning": "Step 1: Reviewed customer profile and transaction history.\\nStep 2: Noted repeated deposits below reporting threshold.\\nStep 3: Mapped pattern to structuring typology.\\nStep 4: Assessed risk as high with strong indicators.\\nStep 5: Selected Structuring classification.",
     "key_indicators": ["threshold avoidance", "repeated amounts", "cash deposits"],
     "risk_level": "High"
 }
@@ -177,6 +177,68 @@ class TestRiskAnalystAgent:
         # Cleanup
         if os.path.exists("test_analyze.jsonl"):
             os.remove("test_analyze.jsonl")
+
+    @pytest.mark.skipif(not RISK_ANALYST_IMPLEMENTED, reason="Risk Analyst Agent not implemented yet")
+    @pytest.mark.parametrize(
+        "classification,risk_level",
+        [
+            ("Sanctions", "Critical"),
+            ("Fraud", "High"),
+            ("Money_Laundering", "High"),
+            ("Other", "Low"),
+        ],
+    )
+    def test_analyze_case_classification_coverage(self, classification, risk_level):
+        """Test additional classification outputs beyond Structuring"""
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = f'''```json
+{{
+    "classification": "{classification}",
+    "confidence_score": 0.77,
+    "reasoning": "Step 1: Reviewed customer profile and transactions.\\nStep 2: Identified indicators aligned to typology.\\nStep 3: Mapped indicators to regulatory guidance.\\nStep 4: Assessed severity and confidence.\\nStep 5: Selected classification.",
+    "key_indicators": ["indicator_a", "indicator_b"],
+    "risk_level": "{risk_level}"
+}}
+```'''
+        mock_client.chat.completions.create.return_value = mock_response
+
+        logger = ExplainabilityLogger("test_classification.jsonl")
+        agent = RiskAnalystAgent(mock_client, logger)
+
+        customer = CustomerData(
+            customer_id="CUST_TEST",
+            name="Test Customer",
+            date_of_birth="1980-01-01",
+            ssn_last_4="1234",
+            address="123 Test St",
+            customer_since="2020-01-01",
+            risk_rating="Medium"
+        )
+        case = CaseData(
+            case_id="CASE_TEST",
+            customer=customer,
+            accounts=[],
+            transactions=[TransactionData(
+                transaction_id="TXN_TEST",
+                account_id="ACC_TEST",
+                transaction_date="2025-01-01",
+                transaction_type="Test",
+                amount=1000.0,
+                description="Test transaction",
+                method="Test"
+            )],
+            case_created_at=datetime.now().isoformat(),
+            data_sources={"test": "data"}
+        )
+
+        result = agent.analyze_case(case)
+        assert result.classification == classification
+        assert result.risk_level == risk_level
+
+        if os.path.exists("test_classification.jsonl"):
+            os.remove("test_classification.jsonl")
     
     @pytest.mark.skipif(not RISK_ANALYST_IMPLEMENTED, reason="Risk Analyst Agent not implemented yet")
     def test_analyze_case_json_error(self):
@@ -219,14 +281,15 @@ class TestRiskAnalystAgent:
             data_sources={"test": "data"}
         )
         
-        # Should raise ValueError for invalid JSON
-        with pytest.raises(ValueError, match="Failed to parse Risk Analyst JSON output"):
-            agent.analyze_case(case)
-        
-        # Verify error was logged
+        result = agent.analyze_case(case)
+
+        assert result.classification == "Other"
+        assert result.risk_level == "Low"
+        assert "parsing_failed" in result.key_indicators
+
         assert len(logger.entries) == 1
         assert logger.entries[0]["success"] == False
-        assert "JSON parsing failed" in logger.entries[0]["reasoning"]
+        assert "Parsing failed" in logger.entries[0]["reasoning"]
         
         # Cleanup
         if os.path.exists("test_json_error.jsonl"):
@@ -242,7 +305,7 @@ class TestRiskAnalystAgent:
 {
     "classification": "Fraud",
     "confidence_score": 0.9,
-    "reasoning": "Clear fraud indicators",
+    "reasoning": "Step 1: Reviewed profile and recent transactions.\\nStep 2: Identified anomalous charge patterns.\\nStep 3: Mapped indicators to fraud typology.\\nStep 4: Rated risk as critical due to severity.\\nStep 5: Selected Fraud classification.",
     "key_indicators": ["suspicious_pattern"],
     "risk_level": "Critical"
 }
@@ -261,7 +324,7 @@ That completes the analysis.'''
         """Test JSON extraction from plain text response"""
         agent = RiskAnalystAgent(Mock(), Mock())
         
-        response_plain_json = '''{"classification": "Money_Laundering", "confidence_score": 0.75, "reasoning": "Complex layering scheme", "key_indicators": ["multiple_transfers"], "risk_level": "High"}'''
+        response_plain_json = '''{"classification": "Money_Laundering", "confidence_score": 0.75, "reasoning": "Step 1: Reviewed accounts and transaction volume.\\nStep 2: Observed layered transfers across accounts.\\nStep 3: Linked behavior to laundering typology.\\nStep 4: Rated risk high based on frequency.\\nStep 5: Selected Money_Laundering classification.", "key_indicators": ["multiple_transfers"], "risk_level": "High"}'''
         
         extracted = agent._extract_json_from_response(response_plain_json)
         parsed = json.loads(extracted)
@@ -375,6 +438,7 @@ That completes the analysis.'''
         assert "reasoning" in prompt
         assert "key_indicators" in prompt
         assert "risk_level" in prompt
+        assert "Risk calibration rubric" in prompt
     
     @pytest.mark.skipif(not RISK_ANALYST_IMPLEMENTED, reason="Risk Analyst Agent not implemented yet")
     def test_api_call_parameters(self):
@@ -382,7 +446,7 @@ That completes the analysis.'''
         mock_client = Mock()
         mock_response = Mock()
         mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''{"classification": "Other", "confidence_score": 0.5, "reasoning": "Test", "key_indicators": ["test"], "risk_level": "Low"}'''
+        mock_response.choices[0].message.content = '''{"classification": "Other", "confidence_score": 0.5, "reasoning": "Step 1: Reviewed customer profile.\\nStep 2: Noted limited indicators.\\nStep 3: No clear typology match.\\nStep 4: Assessed low severity.\\nStep 5: Selected Other classification.", "key_indicators": ["test"], "risk_level": "Low"}'''
         mock_client.chat.completions.create.return_value = mock_response
         
         logger = ExplainabilityLogger("test_api.jsonl")

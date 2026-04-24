@@ -25,6 +25,7 @@ YOUR TASKS:
 """
 
 import json
+import math
 import pandas as pd
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Literal
@@ -155,6 +156,19 @@ class TransactionData(BaseModel):
         datetime.strptime(value, "%Y-%m-%d")
         return value
 
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, value: float) -> float:
+        if value is None:
+            raise ValueError("amount is required")
+        if not math.isfinite(value):
+            raise ValueError("amount must be a finite number")
+        if abs(value) > 1_000_000:
+            raise ValueError("amount exceeds allowed maximum range")
+        if value == 0:
+            raise ValueError("amount must be non-zero")
+        return value
+
 class CaseData(BaseModel):
     """Unified case object combining all data sources
     
@@ -241,7 +255,7 @@ class RiskAnalystOutput(BaseModel):
     REQUIRED FIELDS (for Chain-of-Thought agent output):
     - classification: Literal['Structuring', 'Sanctions', 'Fraud', 'Money_Laundering', 'Other']
     - confidence_score: float = Confidence between 0.0 and 1.0 (use ge=0.0, le=1.0)
-    - reasoning: str = Step-by-step analysis reasoning (max 500 chars)
+    - reasoning: str = 5-step analysis reasoning (max 500 chars)
     - key_indicators: List[str] = List of suspicious indicators found
     - risk_level: Literal['Low', 'Medium', 'High', 'Critical'] = Risk assessment
     
@@ -255,11 +269,22 @@ class RiskAnalystOutput(BaseModel):
     confidence_score: float = Field(
         ..., ge=0.0, le=1.0, description="Confidence score between 0.0 and 1.0"
     )
-    reasoning: str = Field(..., max_length=500, description="Step-by-step reasoning")
+    reasoning: str = Field(..., max_length=500, description="5-step reasoning")
     key_indicators: List[str] = Field(..., description="Key suspicious indicators")
     risk_level: Literal["Low", "Medium", "High", "Critical"] = Field(
         ..., description="Overall risk level"
     )
+
+    @field_validator("reasoning")
+    @classmethod
+    def validate_reasoning_steps(cls, value: str) -> str:
+        lines = [line.strip() for line in value.splitlines() if line.strip()]
+        if len(lines) != 5:
+            raise ValueError("reasoning must include exactly 5 steps")
+        for idx, line in enumerate(lines, start=1):
+            if not line.startswith(f"Step {idx}:"):
+                raise ValueError("reasoning steps must be labeled Step 1-5")
+        return value
 
 class ComplianceOfficerOutput(BaseModel):
     """Compliance Officer agent structured output
@@ -300,10 +325,13 @@ class ExplainabilityLogger:
     
     LOG ENTRY STRUCTURE (use this exact format):
     {
+        'event_id': str(uuid.uuid4()),
         'timestamp': datetime.now(timezone.utc).isoformat(),
         'case_id': case_id,
         'agent_type': agent_type,  # "DataLoader", "RiskAnalyst", "ComplianceOfficer"
         'action': action,          # "create_case", "analyze_case", "generate_narrative"
+        'input_data': input_data,
+        'output_data': output_data,
         'input_summary': str(input_data),
         'output_summary': str(output_data),
         'reasoning': reasoning,
@@ -319,6 +347,14 @@ class ExplainabilityLogger:
     
     def __init__(self, log_file: str = "sar_audit.jsonl"):
         # TODO: Initialize with log_file path and empty entries list
+        if log_file == "sar_audit.jsonl":
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+            log_file = os.path.join(
+                "outputs", "audit_logs", f"sar_audit_{timestamp}.jsonl"
+            )
+        log_dir = os.path.dirname(log_file)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
         self.log_file = log_file
         self.entries: List[Dict[str, Any]] = []
     
@@ -339,10 +375,13 @@ class ExplainabilityLogger:
         """
         # TODO: Implement logging with structured entry creation and file writing
         entry = {
+            "event_id": str(uuid.uuid4()),
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "case_id": case_id,
             "agent_type": agent_type,
             "action": action,
+            "input_data": input_data,
+            "output_data": output_data,
             "input_summary": str(input_data),
             "output_summary": str(output_data),
             "reasoning": reasoning,
@@ -355,6 +394,22 @@ class ExplainabilityLogger:
             log_handle.write(json.dumps(entry) + "\n")
 
 # ===== TODO: IMPLEMENT DATA LOADER =====
+
+def _normalize_value(value: Any) -> Any:
+    if pd.isna(value):
+        return None
+    return value
+
+
+def _normalize_record(record: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = {key: _normalize_value(value) for key, value in record.items()}
+    ssn_value = normalized.get("ssn_last_4")
+    if ssn_value is not None:
+        if isinstance(ssn_value, float) and ssn_value.is_integer():
+            ssn_value = int(ssn_value)
+        normalized["ssn_last_4"] = str(ssn_value).zfill(4)
+    return normalized
+
 
 class DataLoader:
     """Simple loader that creates case objects from CSV data
@@ -424,16 +479,23 @@ class DataLoader:
         start_time = datetime.now(timezone.utc)
         case_id = str(uuid.uuid4())
         try:
-            customer = CustomerData(**customer_data)
+            normalized_customer = _normalize_record(customer_data)
+            normalized_accounts = [
+                _normalize_record(account) for account in account_data
+            ]
+            normalized_transactions = [
+                _normalize_record(transaction) for transaction in transaction_data
+            ]
+            customer = CustomerData(**normalized_customer)
             accounts = [
                 AccountData(**account)
-                for account in account_data
+                for account in normalized_accounts
                 if account.get("customer_id") == customer.customer_id
             ]
             account_ids = {account.account_id for account in accounts}
             transactions = [
                 TransactionData(**transaction)
-                for transaction in transaction_data
+                for transaction in normalized_transactions
                 if transaction.get("account_id") in account_ids
             ]
             data_sources = {
@@ -491,6 +553,25 @@ class DataLoader:
             )
             raise
 
+    def create_case_from_csv(self, customer_id: str, data_dir: str = "data/") -> CaseData:
+        """Create a case directly from CSV sources for a given customer."""
+        customers_df, accounts_df, transactions_df = load_csv_data(data_dir)
+
+        customer_rows = customers_df.loc[
+            customers_df["customer_id"] == customer_id
+        ].to_dict(orient="records")
+        if not customer_rows:
+            raise ValueError(f"Customer {customer_id} not found in CSV data")
+
+        account_rows = accounts_df.loc[
+            accounts_df["customer_id"] == customer_id
+        ].to_dict(orient="records")
+        transaction_rows = transactions_df.to_dict(orient="records")
+
+        return self.create_case_from_data(
+            customer_rows[0], account_rows, transaction_rows
+        )
+
 # ===== HELPER FUNCTIONS (PROVIDED) =====
 
 def load_csv_data(data_dir: str = "data/") -> tuple:
@@ -500,8 +581,10 @@ def load_csv_data(data_dir: str = "data/") -> tuple:
         tuple: (customers_df, accounts_df, transactions_df)
     """
     try:
-        customers_df = pd.read_csv(f"{data_dir}/customers.csv")
-        accounts_df = pd.read_csv(f"{data_dir}/accounts.csv") 
+        customers_df = pd.read_csv(
+            f"{data_dir}/customers.csv", dtype={"ssn_last_4": str}
+        )
+        accounts_df = pd.read_csv(f"{data_dir}/accounts.csv")
         transactions_df = pd.read_csv(f"{data_dir}/transactions.csv")
         return customers_df, accounts_df, transactions_df
     except FileNotFoundError as e:
