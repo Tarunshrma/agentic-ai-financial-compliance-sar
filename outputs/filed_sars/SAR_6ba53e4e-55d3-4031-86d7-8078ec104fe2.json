@@ -1,0 +1,44 @@
+{
+  "sar_metadata": {
+    "sar_id": "SAR_6ba53e4e-55d3-4031-86d7-8078ec104fe2",
+    "filing_date": "2026-04-20T18:07:11.760484+00:00",
+    "filing_type": "Suspicious Activity Report",
+    "ai_generated": true,
+    "review_status": "human_approved"
+  },
+  "subject_information": {
+    "customer_name": "Patrick Williams",
+    "customer_id": "CUST_0118",
+    "address": "PSC 1449, Box 1476, APO AA 87103",
+    "customer_since": "2021-09-05",
+    "risk_rating": "Medium"
+  },
+  "suspicious_activity": {
+    "classification": "Other",
+    "risk_level": "Medium",
+    "confidence_score": 0.6,
+    "narrative": "Patrick Williams (CUST_0118), with a medium risk rating, conducted multiple high-value transactions from 2025-08-02 to 2025-08-04. This included cash deposits and ATM withdrawals at different branches totaling over $42,000. This activity is unusual and raises suspicion of potential money laundering.",
+    "key_indicators": [
+      "Multiple accounts",
+      "High average monthly transactions"
+    ],
+    "ai_reasoning": "Customer has multiple accounts with high balances and average monthly transactions. However, there is no clear pattern of suspicious activity. Transactions are diverse and appear to be for legitimate purposes."
+  },
+  "regulatory_compliance": {
+    "citations": [
+      "BSA/AML Compliance Program\u2014Overview",
+      "FinCEN SAR Electronic Filing Instructions"
+    ],
+    "narrative_word_count": 40,
+    "compliance_status": "approved"
+  },
+  "audit_trail": {
+    "case_id": "f6b69c1f-e8a6-450a-b210-6038b9479d70",
+    "processing_date": "2026-04-20T18:07:11.760484+00:00",
+    "ai_agents_used": [
+      "RiskAnalyst",
+      "ComplianceOfficer"
+    ],
+    "human_reviewer": "compliance_officer"
+  }
+}

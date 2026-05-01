@@ -172,7 +172,7 @@ cython_debug/
 .DS_Store
 
 # Project outputs
-outputs/
+# outputs/
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can

@@ -1,0 +1,45 @@
+{
+  "sar_metadata": {
+    "sar_id": "SAR_75e64d2a-a11d-4d1e-bb61-c5bcc021d32e",
+    "filing_date": "2026-05-01T13:32:38.158968+00:00",
+    "filing_type": "Suspicious Activity Report",
+    "ai_generated": true,
+    "review_status": "human_approved"
+  },
+  "subject_information": {
+    "customer_name": "Jacqueline Rodriguez",
+    "customer_id": "CUST_0111",
+    "address": "49331 Lewis Views Apt. 516, Lake Maryshire, DE 59549",
+    "customer_since": "2022-02-27",
+    "risk_rating": "High"
+  },
+  "suspicious_activity": {
+    "classification": "Other",
+    "risk_level": "Medium",
+    "confidence_score": 0.6,
+    "narrative": "Jacqueline Rodriguez (CUST_0111), a high-risk customer, conducted large wire transfers in July 2025, including a credit of $76,517.25 on 2025-07-29 and debits totaling $49,517.51 between 2025-07-30 and 2025-07-31. These transactions, coupled with her high transaction volume and average amounts, raise suspicion of potential AML violations.",
+    "key_indicators": [
+      "High risk rating",
+      "High transaction volume",
+      "High average transaction amount"
+    ],
+    "ai_reasoning": "The customer has a high risk rating and large transaction volumes with high average amounts. However, the transaction descriptions seem normal and there's no clear pattern of suspicious activity. More data would be needed to identify a specific financial crime typology."
+  },
+  "regulatory_compliance": {
+    "citations": [
+      "BSA 31 CFR 1020.320",
+      "FinCEN SAR requirements"
+    ],
+    "narrative_word_count": 45,
+    "compliance_status": "approved"
+  },
+  "audit_trail": {
+    "case_id": "c7d3a203-0469-4fb9-b37f-3d479f73bddc",
+    "processing_date": "2026-05-01T13:32:38.158968+00:00",
+    "ai_agents_used": [
+      "RiskAnalyst",
+      "ComplianceOfficer"
+    ],
+    "human_reviewer": "compliance_officer"
+  }
+}

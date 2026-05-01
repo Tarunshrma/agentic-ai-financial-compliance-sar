@@ -1,0 +1,45 @@
+{
+  "sar_metadata": {
+    "sar_id": "SAR_c145d1e7-4dad-4cf3-9c79-8a174d28a900",
+    "filing_date": "2026-05-01T13:33:53.271077+00:00",
+    "filing_type": "Suspicious Activity Report",
+    "ai_generated": true,
+    "review_status": "human_approved"
+  },
+  "subject_information": {
+    "customer_name": "Tracy Lewis",
+    "customer_id": "CUST_0053",
+    "address": "8016 Nicole Stream Suite 650, Williamsside, ID 48017",
+    "customer_since": "2024-05-11",
+    "risk_rating": "Medium"
+  },
+  "suspicious_activity": {
+    "classification": "Structuring",
+    "risk_level": "Medium",
+    "confidence_score": 0.7,
+    "narrative": "Tracy Lewis (CUST_0053) exhibited suspicious activity, potentially structuring, with diverse transactions across multiple accounts. Notably, from 2025-07-25 to 2025-07-31, seven large cash deposits, each exceeding $9,000, were made at different branches. This pattern may indicate an attempt to evade BSA/AML reporting requirements.",
+    "key_indicators": [
+      "Multiple accounts",
+      "High average monthly balances",
+      "Diverse transaction methods"
+    ],
+    "ai_reasoning": "The customer has multiple accounts with high average monthly balances. The transactions are diverse in nature and include both credits and debits. The customer also uses different transaction methods (online, branch, ATM), which could be an attempt to avoid detection."
+  },
+  "regulatory_compliance": {
+    "citations": [
+      "BSA 31 CFR 1010.315 - Structuring transactions to evade reporting requirement prohibited",
+      "FinCEN SAR Filing Instructions"
+    ],
+    "narrative_word_count": 42,
+    "compliance_status": "approved"
+  },
+  "audit_trail": {
+    "case_id": "20e5a43f-804a-4ce0-976f-883bf86dd0d6",
+    "processing_date": "2026-05-01T13:33:53.271077+00:00",
+    "ai_agents_used": [
+      "RiskAnalyst",
+      "ComplianceOfficer"
+    ],
+    "human_reviewer": "compliance_officer"
+  }
+}

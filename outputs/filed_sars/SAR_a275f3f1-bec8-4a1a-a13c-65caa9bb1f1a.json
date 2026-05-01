@@ -1,0 +1,46 @@
+{
+  "sar_metadata": {
+    "sar_id": "SAR_a275f3f1-bec8-4a1a-a13c-65caa9bb1f1a",
+    "filing_date": "2026-04-19T10:39:28.885725+00:00",
+    "filing_type": "Suspicious Activity Report",
+    "ai_generated": true,
+    "review_status": "human_approved"
+  },
+  "subject_information": {
+    "customer_name": "Cindy Clayton",
+    "customer_id": "CUST_0057",
+    "address": "08330 Robert Stravenue, Garciaberg, AL 72636",
+    "customer_since": "2020-05-26",
+    "risk_rating": "High"
+  },
+  "suspicious_activity": {
+    "classification": "Structuring",
+    "risk_level": "High",
+    "confidence_score": 0.75,
+    "narrative": "Cindy Clayton (CUST_0057) has been flagged for potential structuring. From February to August 2025, she conducted frequent transactions of varying amounts across multiple accounts. Notably, transactions were often unusually large for their stated purpose. For instance, a $4,922.02 ATM withdrawal on 2025-02-09 and a $7,491.44 ATM withdrawal on 2025-07-31. These activities raise suspicion of attempts to evade BSA/AML detection.",
+    "key_indicators": [
+      "High risk rating",
+      "Multiple accounts with high balances",
+      "Frequent transactions of varying amounts",
+      "Unusually large transactions for stated purpose"
+    ],
+    "ai_reasoning": "Customer has high risk rating. Multiple accounts with high average monthly balances. Frequent transactions with varying amounts, potentially to avoid detection. Some transactions are unusually large for the stated purpose (e.g., grocery purchase)."
+  },
+  "regulatory_compliance": {
+    "citations": [
+      "BSA 31 CFR 1020.320(a)(2)",
+      "FinCEN SAR Filing Instructions"
+    ],
+    "narrative_word_count": 59,
+    "compliance_status": "approved"
+  },
+  "audit_trail": {
+    "case_id": "795e32f1-100b-4093-880e-eef209ca102b",
+    "processing_date": "2026-04-19T10:39:28.885725+00:00",
+    "ai_agents_used": [
+      "RiskAnalyst",
+      "ComplianceOfficer"
+    ],
+    "human_reviewer": "compliance_officer"
+  }
+}

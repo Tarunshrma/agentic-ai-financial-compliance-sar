@@ -1,0 +1,46 @@
+{
+  "sar_metadata": {
+    "sar_id": "SAR_2cbb36cc-59f9-47bf-b7d5-28fa9c958507",
+    "filing_date": "2026-05-01T13:34:54.426012+00:00",
+    "filing_type": "Suspicious Activity Report",
+    "ai_generated": true,
+    "review_status": "human_approved"
+  },
+  "subject_information": {
+    "customer_name": "Jacqueline Rodriguez",
+    "customer_id": "CUST_0111",
+    "address": "49331 Lewis Views Apt. 516, Lake Maryshire, DE 59549",
+    "customer_since": "2022-02-27",
+    "risk_rating": "High"
+  },
+  "suspicious_activity": {
+    "classification": "Money_Laundering",
+    "risk_level": "High",
+    "confidence_score": 0.7,
+    "narrative": "Jacqueline Rodriguez (CUST_0111), a high-risk customer, exhibited suspicious activity indicative of potential money laundering. Between February and July 2025, she conducted high volume and value transactions across multiple accounts, with a significantly higher average monthly balance than the current balance. Notably, large wire transfers were observed in July 2025, including a credit of $76,517.25 and subsequent debits totaling $49,517.51.",
+    "key_indicators": [
+      "High risk rating",
+      "Multiple active accounts",
+      "High average monthly balance",
+      "High volume and value of transactions"
+    ],
+    "ai_reasoning": "The customer has a high risk rating and is conducting transactions across multiple accounts with high balances. The average monthly balance is significantly higher than the current balance, indicating potential layering activity. The nature of transactions (restaurant, grocery, mortgage, education) appears to be normal, but the high volume and value of transactions raise suspicion."
+  },
+  "regulatory_compliance": {
+    "citations": [
+      "BSA 31 CFR 1020.320",
+      "FinCEN SAR Electronic Filing Instructions"
+    ],
+    "narrative_word_count": 59,
+    "compliance_status": "approved"
+  },
+  "audit_trail": {
+    "case_id": "c6ba9e99-7061-4df9-8b76-a02abf6c020a",
+    "processing_date": "2026-05-01T13:34:54.426012+00:00",
+    "ai_agents_used": [
+      "RiskAnalyst",
+      "ComplianceOfficer"
+    ],
+    "human_reviewer": "compliance_officer"
+  }
+}

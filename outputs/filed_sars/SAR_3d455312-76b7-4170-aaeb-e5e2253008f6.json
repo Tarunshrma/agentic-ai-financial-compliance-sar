@@ -1,0 +1,45 @@
+{
+  "sar_metadata": {
+    "sar_id": "SAR_3d455312-76b7-4170-aaeb-e5e2253008f6",
+    "filing_date": "2026-04-20T18:06:30.372400+00:00",
+    "filing_type": "Suspicious Activity Report",
+    "ai_generated": true,
+    "review_status": "human_approved"
+  },
+  "subject_information": {
+    "customer_name": "Cindy Clayton",
+    "customer_id": "CUST_0057",
+    "address": "08330 Robert Stravenue, Garciaberg, AL 72636",
+    "customer_since": "2020-05-26",
+    "risk_rating": "High"
+  },
+  "suspicious_activity": {
+    "classification": "Money_Laundering",
+    "risk_level": "High",
+    "confidence_score": 0.8,
+    "narrative": "Cindy Clayton (CUST_0057), a high-risk customer, engaged in suspicious activity indicative of money laundering. Large account balances and inconsistent transaction purposes were observed. Notably, large online and wire transfers inconsistent with stated purposes (e.g., mortgage payment, grocery purchase) were made between February and August 2025, suggesting potential layering activity.",
+    "key_indicators": [
+      "High risk customer",
+      "Large account balances",
+      "Inconsistent transaction purposes"
+    ],
+    "ai_reasoning": "High risk customer with large account balances and high average monthly balances. The transactions, including large online transfers and wire transfers, are inconsistent with the stated purposes (mortgage payment, grocery purchase, gas station). This indicates potential layering activity, a common money laundering technique."
+  },
+  "regulatory_compliance": {
+    "citations": [
+      "BSA 31 CFR 1020.320",
+      "FinCEN SAR Electronic Filing Instructions"
+    ],
+    "narrative_word_count": 49,
+    "compliance_status": "approved"
+  },
+  "audit_trail": {
+    "case_id": "59d2509b-6737-4119-8a2f-061a30849187",
+    "processing_date": "2026-04-20T18:06:30.372400+00:00",
+    "ai_agents_used": [
+      "RiskAnalyst",
+      "ComplianceOfficer"
+    ],
+    "human_reviewer": "compliance_officer"
+  }
+}

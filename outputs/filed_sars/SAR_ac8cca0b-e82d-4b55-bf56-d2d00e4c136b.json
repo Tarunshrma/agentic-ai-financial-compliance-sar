@@ -1,0 +1,42 @@
+{
+  "sar_metadata": {
+    "sar_id": "SAR_ac8cca0b-e82d-4b55-bf56-d2d00e4c136b",
+    "filing_date": "2026-05-01T13:33:39.006719+00:00",
+    "filing_type": "Suspicious Activity Report",
+    "ai_generated": true,
+    "review_status": "human_approved"
+  },
+  "subject_information": {
+    "customer_name": "Cindy Clayton",
+    "customer_id": "CUST_0057",
+    "address": "08330 Robert Stravenue, Garciaberg, AL 72636",
+    "customer_since": "2020-05-26",
+    "risk_rating": "High"
+  },
+  "suspicious_activity": {
+    "classification": "Money_Laundering",
+    "risk_level": "High",
+    "confidence_score": 0.85,
+    "narrative": "High-risk customer Cindy Clayton (CUST_0057) exhibited potential money laundering behavior from February to August 2025. She maintained high average monthly balances and conducted diverse transactions of small amounts, potentially to avoid detection. Transactions occurred via various channels including mobile, electronic, ATM, and branch.",
+    "key_indicators": [
+      "High average monthly balances",
+      "Small transaction amounts",
+      "Diverse transaction nature"
+    ],
+    "ai_reasoning": "Cindy Clayton, a high-risk customer, has high average monthly balances across all accounts, significantly higher than the current balances. The transaction amounts are relatively small compared to the account balances, suggesting a possible attempt to avoid detection. The transactions are also diverse in nature (mortgage, groceries, auto loan, gas station), which could be an attempt to disguise the source of funds."
+  },
+  "regulatory_compliance": {
+    "citations": [],
+    "narrative_word_count": 43,
+    "compliance_status": "approved"
+  },
+  "audit_trail": {
+    "case_id": "a8474531-d306-4787-8801-1f90836a8b28",
+    "processing_date": "2026-05-01T13:33:39.006719+00:00",
+    "ai_agents_used": [
+      "RiskAnalyst",
+      "ComplianceOfficer"
+    ],
+    "human_reviewer": "compliance_officer"
+  }
+}

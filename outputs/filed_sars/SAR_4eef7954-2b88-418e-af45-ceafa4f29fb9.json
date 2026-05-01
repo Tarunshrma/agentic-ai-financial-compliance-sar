@@ -1,0 +1,44 @@
+{
+  "sar_metadata": {
+    "sar_id": "SAR_4eef7954-2b88-418e-af45-ceafa4f29fb9",
+    "filing_date": "2026-04-19T10:35:19.622964+00:00",
+    "filing_type": "Suspicious Activity Report",
+    "ai_generated": true,
+    "review_status": "human_approved"
+  },
+  "subject_information": {
+    "customer_name": "Tracy Lewis",
+    "customer_id": "CUST_0053",
+    "address": "8016 Nicole Stream Suite 650, Williamsside, ID 48017",
+    "customer_since": "2024-05-11",
+    "risk_rating": "Medium"
+  },
+  "suspicious_activity": {
+    "classification": "Money_Laundering",
+    "risk_level": "High",
+    "confidence_score": 0.8,
+    "narrative": "Tracy Lewis (CUST_0053) exhibited suspicious activity indicative of potential money laundering. Despite low-value, ordinary transactions, high average monthly balances were observed across all accounts. Notably, from 2025-07-25 to 2025-07-31, large cash deposits ranging from $9,238.15 to $9,915.61 were made at various branches, significantly deviating from previous transaction patterns.",
+    "key_indicators": [
+      "High average monthly balances",
+      "Discrepancy between account balances and transaction nature"
+    ],
+    "ai_reasoning": "The customer has high average monthly balances across all accounts, which is inconsistent with the nature of the transactions observed. The transactions are of low value and ordinary nature (education payment, auto loan payment, bill payment), which does not justify the high balances. This discrepancy suggests a potential money laundering scheme where funds are parked in the accounts."
+  },
+  "regulatory_compliance": {
+    "citations": [
+      "BSA 31 CFR 1020.320",
+      "FinCEN SAR Filing Instructions"
+    ],
+    "narrative_word_count": 48,
+    "compliance_status": "approved"
+  },
+  "audit_trail": {
+    "case_id": "9ae4da08-b7ce-45ab-8abd-aa308bd95295",
+    "processing_date": "2026-04-19T10:35:19.622964+00:00",
+    "ai_agents_used": [
+      "RiskAnalyst",
+      "ComplianceOfficer"
+    ],
+    "human_reviewer": "compliance_officer"
+  }
+}
