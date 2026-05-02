@@ -19,16 +19,19 @@ YOUR TASKS:
 import json
 import openai
 from datetime import datetime, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
+from pydantic import ValidationError
 
-# TODO: Import your foundation components
 from src.foundation_sar import (
     RiskAnalystOutput,
     ExplainabilityLogger,
     CaseData,
     AccountData,
     TransactionData,
+    risk_analyst_calibration_rubric,
+    risk_analyst_output_parse_fallback,
+    json_loads_llm_candidate,
 )
 
 # Load environment variables
@@ -61,33 +64,54 @@ class RiskAnalystAgent:
         
         # TODO: Design Chain-of-Thought system prompt
         self.system_prompt = """You are a senior financial crime Risk Analyst.
-Use Chain-of-Thought reasoning to analyze each case step-by-step.
+Output JSON only—no markdown. You MUST include "reasoning_steps": an array of EXACTLY five strings, aligned to:
 
-Analysis Framework:
-1. Data Review: summarize customer, accounts, and transactions.
-2. Pattern Recognition: identify suspicious indicators.
-3. Regulatory Mapping: map indicators to known typologies.
-4. Risk Quantification: assess severity and confidence.
-5. Classification Decision: select best category.
+1. Data Review — summarize customer profile, accounts, and relevant transactions.
+2. Pattern Recognition — list concrete suspicious indicators observed in this case only.
+3. Regulatory Mapping — link indicators to AML/BSA typologies; do not invent facts.
+4. Risk Quantification — explain severity and justify confidence_score (0–1).
+5. Classification Decision — explain why exactly one classification below is chosen.
 
-Classification categories:
-- Structuring
-- Sanctions
-- Fraud
-- Money_Laundering
-- Other
+Classifications (exact token): Structuring | Sanctions | Fraud | Money_Laundering | Other
 
-Return ONLY valid JSON with this schema:
+Risk_level (exact token): Low | Medium | High | Critical
+
+Example shape:
 {
-  "classification": "Structuring|Sanctions|Fraud|Money_Laundering|Other",
-  "confidence_score": 0.0,
-  "reasoning": "step-by-step analysis",
-  "key_indicators": ["indicator1", "indicator2"],
-  "risk_level": "Low|Medium|High|Critical"
+  "classification": "Structuring",
+  "confidence_score": 0.82,
+  "reasoning_steps": [
+    "...",
+    "...",
+    "...",
+    "...",
+    "..."
+  ],
+  "key_indicators": ["threshold avoidance"],
+  "risk_level": "High"
 }
 
-Use professional regulatory language. Keep reasoning concise (<=500 chars).
-"""
+Each reasoning_steps element ≤400 chars; wording must stay professional.
+
+""" + risk_analyst_calibration_rubric()
+
+    _RISK_JSON_CORRECTION_PROMPT = (
+        "Your previous assistant reply could not be parsed as valid JSON or failed schema validation. "
+        "Return ONLY one raw JSON object (no markdown fences) with keys: classification, "
+        "confidence_score, reasoning_steps (exactly five non-empty strings in order per the framework), "
+        "key_indicators (non-empty list), risk_level — matching the calibrated bands in the system prompt."
+    )
+
+    def _risk_output_from_message_content(self, content: str) -> Optional[RiskAnalystOutput]:
+        try:
+            json_text = self._extract_json_from_response(content)
+        except ValueError:
+            return None
+        try:
+            data = json_loads_llm_candidate(json_text)
+            return RiskAnalystOutput(**data)
+        except (json.JSONDecodeError, ValidationError, TypeError):
+            return None
 
     def analyze_case(self, case_data: CaseData) -> RiskAnalystOutput:
         """
@@ -110,48 +134,61 @@ Use professional regulatory language. Keep reasoning concise (<=500 chars).
                     {"role": "user", "content": case_prompt},
                 ],
                 temperature=0.3,
-                max_tokens=1000,
+                max_tokens=1400,
             )
-            content = response.choices[0].message.content or ""
-            try:
-                json_text = self._extract_json_from_response(content)
-                parsed = json.loads(json_text)
-                result = RiskAnalystOutput(**parsed)
-            except Exception as exc:
-                execution_time_ms = (
-                    datetime.now(timezone.utc) - start_time
-                ).total_seconds() * 1000
-                self.logger.log_agent_action(
-                    agent_type="RiskAnalyst",
-                    action="analyze_case",
-                    case_id=case_data.case_id,
-                    input_data={
-                        "case_id": case_data.case_id,
-                        "accounts": len(case_data.accounts),
-                        "transactions": len(case_data.transactions),
-                    },
-                    output_data={},
-                    reasoning="JSON parsing failed during risk analysis.",
-                    execution_time_ms=execution_time_ms,
-                    success=False,
-                    error_message=str(exc),
+            content_primary = response.choices[0].message.content or ""
+            recovery_path = "direct"
+            result = self._risk_output_from_message_content(content_primary)
+
+            if result is None:
+                retry = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": self.system_prompt},
+                        {"role": "user", "content": case_prompt},
+                        {"role": "assistant", "content": content_primary},
+                        {"role": "user", "content": self._RISK_JSON_CORRECTION_PROMPT},
+                    ],
+                    temperature=0.1,
+                    max_tokens=1400,
                 )
-                raise ValueError("Failed to parse Risk Analyst JSON output") from exc
+                content_retry = retry.choices[0].message.content or ""
+                result = self._risk_output_from_message_content(content_retry)
+                if result is not None:
+                    recovery_path = "retry"
+
+            if result is None:
+                result = risk_analyst_output_parse_fallback(case_data.case_id)
+                recovery_path = "fallback"
+
             execution_time_ms = (
                 datetime.now(timezone.utc) - start_time
             ).total_seconds() * 1000
+            log_payload = dict(result.model_dump())
+            log_payload["json_recovery"] = {"path": recovery_path}
+            reasoning_log = result.reasoning
+            if recovery_path == "fallback":
+                reasoning_log = (
+                    f"{reasoning_log} "
+                    "(Degraded fallback: automated JSON/schema recovery exhausted; parsing_failed surfaced in key_indicators.)"
+                ).strip()
+
             self.logger.log_agent_action(
                 agent_type="RiskAnalyst",
                 action="analyze_case",
                 case_id=case_data.case_id,
                 input_data={
                     "case_id": case_data.case_id,
+                    "customer_id": case_data.customer.customer_id,
+                    "customer_risk_rating": case_data.customer.risk_rating,
                     "accounts": len(case_data.accounts),
                     "transactions": len(case_data.transactions),
                 },
-                output_data=result.model_dump(),
-                reasoning=result.reasoning,
+                output_data=log_payload,
+                reasoning=reasoning_log,
                 execution_time_ms=execution_time_ms,
+                success=True,
+                error_message=None,
             )
             return result
         except ValueError:
@@ -166,6 +203,8 @@ Use professional regulatory language. Keep reasoning concise (<=500 chars).
                 case_id=case_data.case_id,
                 input_data={
                     "case_id": case_data.case_id,
+                    "customer_id": case_data.customer.customer_id,
+                    "customer_risk_rating": case_data.customer.risk_rating,
                     "accounts": len(case_data.accounts),
                     "transactions": len(case_data.transactions),
                 },

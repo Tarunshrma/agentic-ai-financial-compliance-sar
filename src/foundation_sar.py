@@ -25,12 +25,111 @@ YOUR TASKS:
 """
 
 import json
-import pandas as pd
+import math
+import re
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any, Literal
-from pydantic import BaseModel, Field, field_validator
+from enum import Enum
+from typing import Dict, List, Optional, Any, Literal, Tuple
+
+import pandas as pd
 import uuid
 import os
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
+
+
+def repair_llm_json_text(raw: str) -> str:
+    """Normalize smart quotes and strip trailing commas before `}`/`]` (limited LLM JSON repair)."""
+    s = raw.strip()
+    replacements = (
+        ("\u201c", '"'),
+        ("\u201d", '"'),
+        ("\u2033", '"'),
+        ("\u2032", "'"),
+        ("\u2019", "'"),
+    )
+    for old, new in replacements:
+        s = s.replace(old, new)
+
+    trailing_comma_pat = re.compile(r",(\s*[}\]])")
+    for _ in range(16):
+        s2 = trailing_comma_pat.sub(r"\1", s)
+        if s2 == s:
+            break
+        s = s2
+    return s
+
+
+def json_loads_llm_candidate(raw: str) -> Dict[str, Any]:
+    """Parse JSON object text from an LLM; retry once after `repair_llm_json_text`."""
+    last_err: Optional[json.JSONDecodeError] = None
+    variants = [raw]
+    repaired = repair_llm_json_text(raw)
+    if repaired != raw:
+        variants.append(repaired)
+    for candidate in variants:
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            last_err = exc
+    assert last_err is not None
+    raise last_err
+
+
+def _is_na_scalar(value: Any) -> bool:
+    """True for None, float NaN, pandas NA/NaN (not plain strings)."""
+    if value is None:
+        return True
+    if isinstance(value, float) and value != value:  # NaN
+        return True
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _normalize_ssn_last_4(value: Any) -> str:
+    """Coerce pandas/numeric SSN fragments to a 4-digit string for validation."""
+    if _is_na_scalar(value):
+        raise ValueError("ssn_last_4 is required")
+    if isinstance(value, bool):
+        digits = str(value).strip()
+    elif isinstance(value, (int, float)):
+        digits = str(int(float(value)))
+    else:
+        digits = str(value).strip()
+    if len(digits) > 4 and digits.isdigit():
+        digits = digits[-4:]
+    elif len(digits) < 4 and digits.isdigit():
+        digits = digits.zfill(4)
+    return digits
+
+
+def _normalize_customer_row(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Align pandas CSV row dicts with CustomerData (int SSN, NaN optional fields)."""
+    out = dict(data)
+    if "ssn_last_4" in out:
+        out["ssn_last_4"] = _normalize_ssn_last_4(out["ssn_last_4"])
+    for key in ("phone", "occupation"):
+        if key in out and _is_na_scalar(out[key]):
+            out[key] = None
+    if "annual_income" in out and _is_na_scalar(out["annual_income"]):
+        out["annual_income"] = None
+    return out
+
+
+def _normalize_transaction_row(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Align pandas CSV row dicts with TransactionData optional strings."""
+    out = dict(data)
+    for key in ("counterparty", "location"):
+        if key in out and _is_na_scalar(out[key]):
+            out[key] = None
+    return out
+
+
+# Single-transaction magnitude bounds (signed amounts for debits/withdrawals).
+_TRANSACTION_AMOUNT_ABS_MIN = 0.01
+_TRANSACTION_AMOUNT_ABS_MAX = 50_000_000.0
+
 
 # ===== TODO: IMPLEMENT PYDANTIC SCHEMAS =====
 
@@ -67,6 +166,13 @@ class CustomerData(BaseModel):
     phone: Optional[str] = Field(None, description="Phone number")
     occupation: Optional[str] = Field(None, description="Occupation")
     annual_income: Optional[int] = Field(None, description="Annual income")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_pandas_csv_types(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return _normalize_customer_row(data)
+        return data
 
     @field_validator("date_of_birth", "customer_since")
     @classmethod
@@ -149,10 +255,33 @@ class TransactionData(BaseModel):
     counterparty: Optional[str] = Field(None, description="Transaction counterparty")
     location: Optional[str] = Field(None, description="Transaction location")
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_pandas_csv_types(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return _normalize_transaction_row(data)
+        return data
+
     @field_validator("transaction_date")
     @classmethod
     def validate_transaction_date(cls, value: str) -> str:
         datetime.strptime(value, "%Y-%m-%d")
+        return value
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount_range(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("amount must be a finite number (not NaN or infinite)")
+        mag = abs(value)
+        if mag < _TRANSACTION_AMOUNT_ABS_MIN:
+            raise ValueError(
+                f"amount absolute value must be at least {_TRANSACTION_AMOUNT_ABS_MIN}"
+            )
+        if mag > _TRANSACTION_AMOUNT_ABS_MAX:
+            raise ValueError(
+                f"amount absolute value must not exceed {_TRANSACTION_AMOUNT_ABS_MAX:,.0f}"
+            )
         return value
 
 class CaseData(BaseModel):
@@ -235,31 +364,97 @@ class CaseData(BaseModel):
                 raise ValueError("transaction account_id must match case accounts")
         return value
 
+
+# --- Risk Analyst: confidence ↔ risk_level calibration (schema + prompt; keep in sync) ---
+RISK_LEVEL_CONFIDENCE_BANDS: Dict[str, Tuple[float, float]] = {
+    "Low": (0.0, 0.48),
+    "Medium": (0.40, 0.68),
+    "High": (0.62, 0.88),
+    "Critical": (0.82, 1.0),
+}
+
+
+def risk_analyst_calibration_rubric() -> str:
+    """Human-readable rubric appended to the Risk Analyst system prompt."""
+    lines = [
+        "Confidence ↔ risk_level calibration (mandatory): choose risk_level first, then set "
+        "confidence_score inside the matching inclusive band. Step 4 must justify the pair.",
+    ]
+    for level, (lo, hi) in RISK_LEVEL_CONFIDENCE_BANDS.items():
+        lines.append(f"  • {level}: confidence_score between {lo} and {hi} (inclusive).")
+    lines.append(
+        "If evidence is ambiguous, prefer a lower risk_level or a confidence near the middle of its band."
+    )
+    return "\n".join(lines)
+
+
 class RiskAnalystOutput(BaseModel):
     """Risk Analyst agent structured output
     
     REQUIRED FIELDS (for Chain-of-Thought agent output):
     - classification: Literal['Structuring', 'Sanctions', 'Fraud', 'Money_Laundering', 'Other']
     - confidence_score: float = Confidence between 0.0 and 1.0 (use ge=0.0, le=1.0)
-    - reasoning: str = Step-by-step analysis reasoning (max 500 chars)
+    - reasoning_steps: List[str], exactly five non-empty strings (one per framework step)
     - key_indicators: List[str] = List of suspicious indicators found
     - risk_level: Literal['Low', 'Medium', 'High', 'Critical'] = Risk assessment
-    
-    HINT: Use Literal types to restrict classification and risk_level values
-    HINT: Use Field(..., ge=0.0, le=1.0) for confidence_score validation
-    HINT: Use Field(..., max_length=500) for reasoning length limit
+
+    reasoning (computed): compact text for SAR metadata / downstream prompts (≤500 chars)
     """
+
     classification: Literal[
         "Structuring", "Sanctions", "Fraud", "Money_Laundering", "Other"
     ] = Field(..., description="Suspicious activity classification")
     confidence_score: float = Field(
         ..., ge=0.0, le=1.0, description="Confidence score between 0.0 and 1.0"
     )
-    reasoning: str = Field(..., max_length=500, description="Step-by-step reasoning")
+    reasoning_steps: List[str] = Field(
+        ...,
+        min_length=5,
+        max_length=5,
+        description=(
+            "Five Chain-of-Thought steps: "
+            "(1) Data Review, (2) Pattern Recognition, "
+            "(3) Regulatory Mapping, (4) Risk Quantification, "
+            "(5) Classification Decision."
+        ),
+    )
     key_indicators: List[str] = Field(..., description="Key suspicious indicators")
     risk_level: Literal["Low", "Medium", "High", "Critical"] = Field(
         ..., description="Overall risk level"
     )
+
+    @field_validator("reasoning_steps")
+    @classmethod
+    def validate_reasoning_steps(cls, steps: List[str]) -> List[str]:
+        stripped = [s.strip() for s in steps]
+        if any(len(s) == 0 for s in stripped):
+            raise ValueError("Each reasoning_steps entry must be non-empty")
+        max_each = 400
+        if any(len(s) > max_each for s in stripped):
+            raise ValueError(f"Each reasoning_steps entry must be at most {max_each} chars")
+        return stripped
+
+    @model_validator(mode="after")
+    def validate_confidence_risk_calibration(self) -> "RiskAnalystOutput":
+        lo, hi = RISK_LEVEL_CONFIDENCE_BANDS[self.risk_level]
+        c = self.confidence_score
+        if c < lo - 1e-9 or c > hi + 1e-9:
+            raise ValueError(
+                f"confidence_score ({c}) incompatible with risk_level {self.risk_level!r}: "
+                f"expected between {lo} and {hi} inclusive (see risk_analyst_calibration_rubric)."
+            )
+        return self
+
+    @computed_field
+    @property
+    def reasoning(self) -> str:
+        lines = [
+            f"Step {i}: {text}" for i, text in enumerate(self.reasoning_steps, start=1)
+        ]
+        blob = "\n".join(lines)
+        if len(blob) <= 500:
+            return blob
+        return blob[:497] + "..."
 
 class ComplianceOfficerOutput(BaseModel):
     """Compliance Officer agent structured output
@@ -286,6 +481,112 @@ class ComplianceOfficerOutput(BaseModel):
     )
     completeness_check: bool = Field(..., description="Whether narrative is complete")
 
+
+def risk_analyst_output_parse_fallback(case_id: str) -> RiskAnalystOutput:
+    """Conservative degraded output after JSON/schema recovery fails (audit-safe, in-band calibration)."""
+    return RiskAnalystOutput(
+        classification="Other",
+        confidence_score=0.42,
+        reasoning_steps=[
+            "Data Review: Automated review halted before model output could be ingested reliably.",
+            "Pattern Recognition: No additional typology tagging applied pending human validation.",
+            "Regulatory Mapping: Case retained for SAR workflow with escalation per internal policy.",
+            "Risk Quantification: Low calibrated confidence reflecting parser failure rather than substantive absolution.",
+            "Classification Decision: Other with parsing_failed indicators for manual adjudication.",
+        ],
+        key_indicators=["parsing_failed", "manual_review_required"],
+        risk_level="Low",
+    )
+
+
+def compliance_officer_output_parse_fallback(
+    case_id: str, customer_name: str
+) -> ComplianceOfficerOutput:
+    """Placeholder narrative when LLM JSON cannot be validated; preserves downstream execution."""
+    short = customer_name.strip() or "the subject customer"
+    narrative = (
+        f"Automated SAR narrative unavailable for case {case_id} ({short}). "
+        "Summary of suspicious activity could not be machine-validated after JSON/schema recovery attempts. "
+        "Prepare narrative manually under Bank Secrecy Act and FinCEN SAR instructions (parsing_failed)."
+    )
+    return ComplianceOfficerOutput(
+        narrative=narrative,
+        narrative_reasoning=(
+            "Fallback response after Compliance Officer JSON parse or schema validation failure; completeness_check false."
+        ),
+        regulatory_citations=["FinCEN SAR Instructions"],
+        completeness_check=False,
+    )
+
+
+def _audit_json_safe(value: Any) -> Any:
+    """Recursively coerce values so each JSONL row is plain JSON (no Python repr blobs)."""
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return None
+        return value
+    if isinstance(value, dict):
+        out: Dict[str, Any] = {}
+        for key, val in value.items():
+            out[str(key)] = _audit_json_safe(val)
+        return out
+    if isinstance(value, (list, tuple)):
+        return [_audit_json_safe(item) for item in value]
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, BaseModel):
+        return _audit_json_safe(value.model_dump(mode="json"))
+    return str(value)
+
+
+def audit_session_timestamp_utc() -> str:
+    """UTC timestamp for deterministic output filenames (``YYYYMMDD_HHMMSS``)."""
+    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+
+def _filename_safe_fragment(value: str, max_length: int = 180) -> str:
+    pieces: List[str] = []
+    for char in value.strip():
+        if char.isalnum() or char in "-_.":
+            pieces.append(char)
+        elif char.isspace():
+            pieces.append("_")
+    out = "".join(pieces).strip("._") or "unknown"
+    return out[:max_length]
+
+
+def audit_jsonl_path(
+    project_outputs_dir: str, *, stem: str, session_timestamp_utc: str
+) -> str:
+    """Return ``.../outputs/audit_logs/<stem>_run_<UTC>.jsonl`` and ensure the directory exists."""
+    audit_dir = os.path.join(project_outputs_dir, "audit_logs")
+    os.makedirs(audit_dir, exist_ok=True)
+    basename = f"{stem}_run_{session_timestamp_utc}.jsonl"
+    return os.path.join(audit_dir, basename)
+
+
+def filed_sar_json_path(
+    project_outputs_dir: str,
+    *,
+    session_timestamp_utc: str,
+    case_id: str,
+    sar_id: str,
+) -> str:
+    """Return ``.../outputs/filed_sars/<UTC>__case_<id>__<sar_id>.json`` and ensure the directory exists."""
+    sars_dir = os.path.join(project_outputs_dir, "filed_sars")
+    os.makedirs(sars_dir, exist_ok=True)
+    case_frag = _filename_safe_fragment(case_id)
+    sar_frag = _filename_safe_fragment(sar_id)
+    basename = f"{session_timestamp_utc}__case_{case_frag}__{sar_frag}.json"
+    return os.path.join(sars_dir, basename)
+
+
 # ===== TODO: IMPLEMENT AUDIT LOGGING =====
 
 class ExplainabilityLogger:
@@ -297,54 +598,48 @@ class ExplainabilityLogger:
 
     METHODS:
     - log_agent_action(): Logs agent actions with structured data
-    
-    LOG ENTRY STRUCTURE (use this exact format):
+
+    LOG ENTRY STRUCTURE (JSON-serializable; suitable for regulatory tooling):
     {
+        'event_id': str(uuid.uuid4()),
         'timestamp': datetime.now(timezone.utc).isoformat(),
         'case_id': case_id,
-        'agent_type': agent_type,  # "DataLoader", "RiskAnalyst", "ComplianceOfficer"
-        'action': action,          # "create_case", "analyze_case", "generate_narrative"
-        'input_summary': str(input_data),
-        'output_summary': str(output_data),
+        'agent_type': agent_type,
+        'action': action,
+        'inputs': { ... },   # structured input payload (nested JSON objects)
+        'outputs': { ... },  # structured output payload
         'reasoning': reasoning,
         'execution_time_ms': execution_time_ms,
-        'success': success,        # True/False
-        'error_message': error_message  # None if success=True
+        'success': success,
+        'error_message': error_message | null
     }
-    
-    HINT: Write each entry as JSON + newline to create JSONL format
-    HINT: Use 'a' mode to append to log file
-    HINT: Store entries in self.entries list AND write to file
     """
-    
+
     def __init__(self, log_file: str = "sar_audit.jsonl"):
-        # TODO: Initialize with log_file path and empty entries list
         self.log_file = log_file
         self.entries: List[Dict[str, Any]] = []
-    
-    def log_agent_action(self, agent_type: str, action: str, case_id: str, 
-                        input_data: Dict, output_data: Dict, reasoning: str, 
-                        execution_time_ms: float, success: bool = True, 
-                        error_message: Optional[str] = None):
-        """Log an agent action with essential context
-        
-        IMPLEMENTATION STEPS:
-        1. Create entry dictionary with all fields (see structure above)
-        2. Add entry to self.entries list
-        3. Write entry to log file as JSON line
-        
-        HINT: Use json.dumps(entry) + '\n' for JSONL format
-        HINT: Use datetime.now(timezone.utc).isoformat() for timestamp
-        HINT: Convert input_data and output_data to strings with str()
-        """
-        # TODO: Implement logging with structured entry creation and file writing
+
+    def log_agent_action(
+        self,
+        agent_type: str,
+        action: str,
+        case_id: str,
+        input_data: Dict,
+        output_data: Dict,
+        reasoning: str,
+        execution_time_ms: float,
+        success: bool = True,
+        error_message: Optional[str] = None,
+    ):
+        """Append one audit event; ``inputs``/``outputs`` are nested JSON objects, not string summaries."""
         entry = {
+            "event_id": str(uuid.uuid4()),
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "case_id": case_id,
             "agent_type": agent_type,
             "action": action,
-            "input_summary": str(input_data),
-            "output_summary": str(output_data),
+            "inputs": _audit_json_safe(input_data),
+            "outputs": _audit_json_safe(output_data),
             "reasoning": reasoning,
             "execution_time_ms": execution_time_ms,
             "success": success,
@@ -388,6 +683,10 @@ class DataLoader:
                             transaction_data: List[Dict]) -> CaseData:
         """Create a unified case object from fragmented AML data
 
+        Accepts plain ``dict`` rows (e.g. from ``DataFrame.to_dict("records")``). Integer
+        ``ssn_last_4`` values and pandas NA in optional transaction strings are
+        normalized before Pydantic validation.
+
         SUGGESTED STEPS:
         1. Record start time for performance tracking
         2. Generate unique case_id using uuid.uuid4()
@@ -424,7 +723,8 @@ class DataLoader:
         start_time = datetime.now(timezone.utc)
         case_id = str(uuid.uuid4())
         try:
-            customer = CustomerData(**customer_data)
+            # Normalize pandas/CSV-native types before models (ints, NaN in optionals).
+            customer = CustomerData(**_normalize_customer_row(dict(customer_data)))
             accounts = [
                 AccountData(**account)
                 for account in account_data
@@ -432,7 +732,7 @@ class DataLoader:
             ]
             account_ids = {account.account_id for account in accounts}
             transactions = [
-                TransactionData(**transaction)
+                TransactionData(**_normalize_transaction_row(dict(transaction)))
                 for transaction in transaction_data
                 if transaction.get("account_id") in account_ids
             ]
@@ -494,15 +794,25 @@ class DataLoader:
 # ===== HELPER FUNCTIONS (PROVIDED) =====
 
 def load_csv_data(data_dir: str = "data/") -> tuple:
-    """Helper function to load all CSV files
-    
-    Returns:
-        tuple: (customers_df, accounts_df, transactions_df)
+    """Load bundled AML CSVs with dtypes suited for downstream Pydantic / DataLoader.
+
+    Enforces string types for identifiers and ``ssn_last_4`` (otherwise pandas often
+    infers integers). Missing optional cells in transactions still become NA in the
+    frame; ``DataLoader`` / ``TransactionData`` normalizers map those to ``None``.
     """
     try:
-        customers_df = pd.read_csv(f"{data_dir}/customers.csv")
-        accounts_df = pd.read_csv(f"{data_dir}/accounts.csv") 
-        transactions_df = pd.read_csv(f"{data_dir}/transactions.csv")
+        customers_df = pd.read_csv(
+            f"{data_dir}/customers.csv",
+            dtype={"customer_id": str, "ssn_last_4": str},
+        )
+        accounts_df = pd.read_csv(
+            f"{data_dir}/accounts.csv",
+            dtype={"account_id": str, "customer_id": str},
+        )
+        transactions_df = pd.read_csv(
+            f"{data_dir}/transactions.csv",
+            dtype={"transaction_id": str, "account_id": str},
+        )
         return customers_df, accounts_df, transactions_df
     except FileNotFoundError as e:
         raise FileNotFoundError(f"CSV file not found: {e}")

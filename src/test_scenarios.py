@@ -33,6 +33,18 @@ except ImportError:
     print("ℹ️ Foundation components not yet implemented. Test scenarios ready when you complete foundation_sar.py")
 
 
+def _risk_cot_steps_from_theme(theme: str) -> List[str]:
+    """Five explicit CoT strings for RiskAnalystOutput fixtures / compliance scenarios."""
+    t = theme.strip()
+    return [
+        f"Data Review: Summarized customer and activity context for {t}.",
+        f"Pattern Recognition: Identified indicators consistent with {t}.",
+        f"Regulatory Mapping: Linked behaviors to AML/BSA SAR expectations for {t}.",
+        f"Risk Quantification: Calibrated confidence from strength of {t} indicators.",
+        f"Classification Decision: Final label reflects dominant {t} typology.",
+    ]
+
+
 class RiskAnalystScenarios:
     """
     Comprehensive test scenarios for Risk Analyst Agent validation.
@@ -448,7 +460,7 @@ class ComplianceOfficerScenarios:
                 "risk_analysis": {
                     "classification": "Structuring",
                     "confidence_score": 0.85,
-                    "reasoning": "Multiple cash deposits just under $10,000 threshold over 3 consecutive days",
+                    "reasoning_steps": _risk_cot_steps_from_theme("structuring near CTR threshold"),
                     "key_indicators": ["threshold avoidance", "repeated amounts", "cash deposits", "multiple locations"],
                     "risk_level": "High"
                 },
@@ -463,7 +475,7 @@ class ComplianceOfficerScenarios:
                 "risk_analysis": {
                     "classification": "Money_Laundering",
                     "confidence_score": 0.90,
-                    "reasoning": "Large wire transfers to high-risk jurisdictions with complex layering pattern",
+                    "reasoning_steps": _risk_cot_steps_from_theme("layering and high-risk wires"),
                     "key_indicators": ["high-risk jurisdictions", "large amounts", "layered transactions", "shell companies"],
                     "risk_level": "Critical"
                 },
@@ -478,7 +490,7 @@ class ComplianceOfficerScenarios:
                 "risk_analysis": {
                     "classification": "Fraud",
                     "confidence_score": 0.78,
-                    "reasoning": "Elderly customer account showing uncharacteristic large online transfers",
+                    "reasoning_steps": _risk_cot_steps_from_theme("identity and profile mismatch fraud"),
                     "key_indicators": ["profile inconsistency", "elderly customer", "online activity", "large amounts"],
                     "risk_level": "High"
                 },
@@ -493,7 +505,7 @@ class ComplianceOfficerScenarios:
                 "risk_analysis": {
                     "classification": "Sanctions",
                     "confidence_score": 0.95,
-                    "reasoning": "Wire transfer to entity on OFAC sanctions list",
+                    "reasoning_steps": _risk_cot_steps_from_theme("sanctions-linked counterparty exposure"),
                     "key_indicators": ["sanctioned entity", "OFAC list", "prohibited transaction"],
                     "risk_level": "Critical"
                 },
@@ -517,7 +529,7 @@ class ComplianceOfficerScenarios:
         return RiskAnalystOutput(
             classification=risk_data["classification"],
             confidence_score=risk_data["confidence_score"],
-            reasoning=risk_data["reasoning"],
+            reasoning_steps=risk_data["reasoning_steps"],
             key_indicators=risk_data["key_indicators"],
             risk_level=risk_data["risk_level"]
         )

@@ -31,6 +31,10 @@ Your system will consist of **two specialized AI agents**:
 - **Compliance Officer Agent**: Uses ReACT prompting to generate regulatory narratives
 - **Human-in-the-Loop**: Critical decision gates for regulatory compliance
 
+### Implementation documentation
+
+For what was implemented beyond the starter, the JSONL audit schema (including human gate events), **`outputs/`** naming conventions, and how to regenerate SARs, audit logs, and workflow metrics, see **[`docs/IMPLEMENTATION_NOTES.md`](docs/IMPLEMENTATION_NOTES.md)**.
+
 ### 🎯 Business Context: Why SAR Processing Matters
 
 **Regulatory Requirements:**
@@ -98,28 +102,26 @@ starter/
 │   └── 03_workflow_integration.ipynb
 ├── src/                        # Source code modules
 │   ├── __init__.py
-│   ├── foundation_sar.py       # Core data schemas (TO IMPLEMENT)
-│   ├── risk_analyst_agent.py   # Risk analysis agent (TO IMPLEMENT)
-│   └── compliance_officer_agent.py  # Compliance agent (TO IMPLEMENT)
+│   ├── foundation_sar.py       # Schemas, DataLoader, ExplainabilityLogger, output path helpers
+│   ├── risk_analyst_agent.py   # Risk Analyst agent (Chain-of-Thought)
+│   └── compliance_officer_agent.py  # Compliance Officer agent (ReACT)
 ├── tests/                      # Unit tests
 │   ├── __init__.py
-│   ├── test_foundation.py     # Foundation tests (10) - Run to validate Phase 1
-│   ├── test_risk_analyst.py   # Risk Analyst tests (10) - Run to validate Phase 2  
-│   └── test_compliance_officer.py # Compliance tests (10) - Run to validate Phase 3
+│   ├── test_foundation.py     # Foundation tests — run to validate Phase 1
+│   ├── test_risk_analyst.py   # Risk Analyst tests — validate Phase 2
+│   └── test_compliance_officer.py # Compliance tests — validate Phase 3
 ├── outputs/                    # Generated files
 │   ├── filed_sars/            # SAR documents
 │   └── audit_logs/            # Decision audit trails
-└── docs/                      # Additional documentation
-    ├── system_architecture.md    # 🏗️ SYSTEM OVERVIEW (Read FIRST!)
-    ├── prompting_guide.md
-    ├── regulatory_context.md
-    └── troubleshooting.md
+└── docs/                      # Implementation documentation
+    ├── README.md                   # Index of docs/
+    └── IMPLEMENTATION_NOTES.md     # Customizations, audit schema, outputs, reproduction
 ```
 
 ## 📚 Project Phases
 
-### 🏗️ **PREREQUISITE: System Architecture Overview**
-**📖 Before Starting Phase 1, Read:** `docs/system_architecture.md`
+### 🏗️ **PREREQUISITE: System overview**
+**📖 Read:** [`docs/IMPLEMENTATION_NOTES.md`](docs/IMPLEMENTATION_NOTES.md) for data flow, audit logging, and output layout, and the **System Architecture** section (and diagram) in this README above.
 
 **Understanding Required:**
 - Complete system data flow from CSV files to SAR documents
@@ -133,7 +135,7 @@ starter/
 
 ### Phase 1: Foundation & Data Modeling
 **Notebook: `01_data_exploration.ipynb`**
-**📖 Required Reading FIRST:** `docs/system_architecture.md`
+**📖 See:** [`docs/IMPLEMENTATION_NOTES.md`](docs/IMPLEMENTATION_NOTES.md) §1–2 for what the foundation module implements.
 
 **Learning Focus:** Pydantic schemas, data validation, type safety
 
@@ -393,19 +395,17 @@ Your project will be evaluated on:
 
 ## 📚 Additional Resources
 
-- **🏗️ System Architecture**: `docs/system_architecture.md` - **READ FIRST!** Complete system overview with data flow diagrams
-- **Regulatory Context**: `docs/regulatory_context.md`
-- **Prompting Guide**: `docs/prompting_guide.md`
-- **Troubleshooting**: `docs/troubleshooting.md`
-- **BSA/AML Guidelines**: [FinCEN Official Resources](https://www.fincen.gov/)
+- **Implementation notes**: [`docs/IMPLEMENTATION_NOTES.md`](docs/IMPLEMENTATION_NOTES.md) — customizations vs starter, audit JSONL schema (including human gate), `outputs/` conventions, reproduction
+- **Project brief**: `PROJECT_DESCRIPTION.md`
+- **Architecture diagram**: `images/System Architecture SAR.png` (linked in README above)
+- **BSA/AML context**: [FinCEN Official Resources](https://www.fincen.gov/)
 
 ## 🆘 Getting Help
 
-1. **🏗️ Start with System Architecture** - Read `docs/system_architecture.md` for complete system understanding
-2. **Review the documentation** in the `docs/` folder
-3. **Check the test files** for expected behavior
-4. **Use the notebooks** for interactive development
-5. **Study the sample data** to understand patterns
+1. **Read** [`docs/IMPLEMENTATION_NOTES.md`](docs/IMPLEMENTATION_NOTES.md) for system behavior, logging, and regeneration steps
+2. **Review** `tests/` for expected schema and agent behavior
+3. **Use the notebooks** for interactive development
+4. **Study the sample data** in `data/` to understand patterns
 
 Remember: This project simulates real regulatory requirements. Focus on building systems that are **explainable**, **auditable**, and **compliant** with financial regulations.
 

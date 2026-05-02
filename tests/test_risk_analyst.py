@@ -19,7 +19,8 @@ try:
         CaseData,
         CustomerData,
         AccountData,
-        TransactionData
+        TransactionData,
+        RISK_LEVEL_CONFIDENCE_BANDS,
     )
     
     # Test if RiskAnalystAgent is actually implemented (not just empty pass statements)
@@ -73,6 +74,18 @@ if not RISK_ANALYST_IMPLEMENTED:
     print("⚠️  Risk Analyst Agent not yet implemented - tests will be skipped")
     print("💡 Implement the RiskAnalystAgent class in src/risk_analyst_agent.py to run these tests")
 
+
+def _risk_response_steps_for_classification(classification: str) -> list:
+    """Five CoT strings for mocked LLM payloads (one scenario per SAR type)."""
+    return [
+        f"Data Review: fixture case written to exercise {classification} end-to-end parsing.",
+        f"Pattern Recognition: placeholder indicators consistent with {classification} narrative.",
+        f"Regulatory Mapping: generic BSA/SAR supervisory context for {classification}.",
+        f"Risk Quantification: confidence held at 0.8 for deterministic test assertion.",
+        f"Classification Decision: model output must carry label {classification}.",
+    ]
+
+
 class TestRiskAnalystAgent:
     """Test RiskAnalystAgent core functionality"""
     
@@ -105,7 +118,13 @@ class TestRiskAnalystAgent:
 {
     "classification": "Structuring",
     "confidence_score": 0.85,
-    "reasoning": "Multiple transactions just under $10,000 threshold suggest structuring",
+    "reasoning_steps": [
+        "Reviewed checking account showing repeated deposits under reporting threshold.",
+        "Observed clustered cash deposits and round amounts consistent with CTR avoidance.",
+        "Mapped indicators to structuring typology referenced under BSA obligations.",
+        "High confidence due to sequencing and denomination patterns in source data.",
+        "Classification Structuring fits best versus laundering-only or fraud hypotheses."
+    ],
     "key_indicators": ["threshold avoidance", "repeated amounts", "cash deposits"],
     "risk_level": "High"
 }
@@ -165,7 +184,9 @@ class TestRiskAnalystAgent:
         assert result.confidence_score == 0.85
         assert result.risk_level == "High"
         assert len(result.key_indicators) == 3
-        
+        assert len(result.reasoning_steps) == 5
+        assert all(len(s.strip()) > 0 for s in result.reasoning_steps)
+
         # Verify API was called
         mock_client.chat.completions.create.assert_called_once()
         
@@ -177,10 +198,94 @@ class TestRiskAnalystAgent:
         # Cleanup
         if os.path.exists("test_analyze.jsonl"):
             os.remove("test_analyze.jsonl")
-    
+
     @pytest.mark.skipif(not RISK_ANALYST_IMPLEMENTED, reason="Risk Analyst Agent not implemented yet")
-    def test_analyze_case_json_error(self):
-        """Test handling of invalid JSON response"""
+    @pytest.mark.parametrize(
+        "classification,risk_level,key_tag",
+        [
+            ("Structuring", "High", "cash_threshold_pattern"),
+            ("Sanctions", "Critical", "ofac_style_counterparty"),
+            ("Fraud", "High", "account_takeover_signals"),
+            ("Money_Laundering", "Critical", "layering_velocity"),
+            ("Other", "Low", "inconclusive_benign_mix"),
+        ],
+    )
+    def test_analyze_case_each_sar_classification_end_to_end(
+        self, classification, risk_level, key_tag
+    ):
+        """Full agent path: mocked API returns each Literal label; RiskAnalystOutput validates it."""
+        payload = {
+            "classification": classification,
+            "confidence_score": round(
+                (
+                    RISK_LEVEL_CONFIDENCE_BANDS[risk_level][0]
+                    + RISK_LEVEL_CONFIDENCE_BANDS[risk_level][1]
+                )
+                / 2,
+                3,
+            ),
+            "reasoning_steps": _risk_response_steps_for_classification(classification),
+            "key_indicators": [key_tag, "scenario_test_marker"],
+            "risk_level": risk_level,
+        }
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = json.dumps(payload)
+        mock_client.chat.completions.create.return_value = mock_response
+
+        logger = ExplainabilityLogger(log_file=os.devnull)
+        agent = RiskAnalystAgent(mock_client, logger)
+
+        customer = CustomerData(
+            customer_id="CUST_MULTI",
+            name="Scenario Customer",
+            date_of_birth="1980-01-01",
+            ssn_last_4="1234",
+            address="123 Test St",
+            customer_since="2020-01-01",
+            risk_rating="Medium",
+        )
+        account = AccountData(
+            account_id="ACC_MULTI",
+            customer_id="CUST_MULTI",
+            account_type="Checking",
+            opening_date="2020-01-01",
+            current_balance=10000.0,
+            average_monthly_balance=8000.0,
+            status="Active",
+        )
+        transaction = TransactionData(
+            transaction_id="TXN_MULTI",
+            account_id="ACC_MULTI",
+            transaction_date="2025-01-01",
+            transaction_type="Wire_Transfer",
+            amount=5000.0,
+            description="Scenario transaction",
+            method="Wire",
+        )
+        case = CaseData(
+            case_id="CASE_CLASS_COVERAGE",
+            customer=customer,
+            accounts=[account],
+            transactions=[transaction],
+            case_created_at=datetime.now().isoformat(),
+            data_sources={"test": "classification_coverage"},
+        )
+
+        result = agent.analyze_case(case)
+
+        assert isinstance(result, RiskAnalystOutput)
+        assert result.classification == classification
+        assert result.risk_level == risk_level
+        lo, hi = RISK_LEVEL_CONFIDENCE_BANDS[risk_level]
+        assert lo <= result.confidence_score <= hi
+        assert len(result.reasoning_steps) == 5
+        mock_client.chat.completions.create.assert_called_once()
+
+    @pytest.mark.skipif(not RISK_ANALYST_IMPLEMENTED, reason="Risk Analyst Agent not implemented yet")
+    def test_analyze_case_json_fallback_after_failed_recovery(self):
+        """Invalid assistant JSON twice yields conservative fallback; audit log records json_recovery fallback."""
         # Setup mock with invalid JSON
         mock_client = Mock()
         mock_response = Mock()
@@ -219,19 +324,140 @@ class TestRiskAnalystAgent:
             data_sources={"test": "data"}
         )
         
-        # Should raise ValueError for invalid JSON
-        with pytest.raises(ValueError, match="Failed to parse Risk Analyst JSON output"):
-            agent.analyze_case(case)
-        
-        # Verify error was logged
+        # Retry + fallback: workflow continues with degraded, auditable RiskAnalystOutput
+        bad = mock_response  # reused for primary + corrective turn
+        mock_client.chat.completions.create.return_value = bad
+        result = agent.analyze_case(case)
+
+        assert isinstance(result, RiskAnalystOutput)
+        assert result.classification == "Other"
+        assert "parsing_failed" in result.key_indicators
+        assert mock_client.chat.completions.create.call_count == 2
+
         assert len(logger.entries) == 1
-        assert logger.entries[0]["success"] == False
-        assert "JSON parsing failed" in logger.entries[0]["reasoning"]
+        assert logger.entries[0]["success"] is True
+        assert logger.entries[0]["outputs"]["json_recovery"]["path"] == "fallback"
         
         # Cleanup
         if os.path.exists("test_json_error.jsonl"):
             os.remove("test_json_error.jsonl")
-    
+
+    @pytest.mark.skipif(not RISK_ANALYST_IMPLEMENTED, reason="Risk Analyst Agent not implemented yet")
+    def test_analyze_case_json_recovery_retry_succeeds(self):
+        """Malformed first turn; corrective multimessage retry returns valid RiskAnalystOutput."""
+        payload = {
+            "classification": "Structuring",
+            "confidence_score": 0.85,
+            "reasoning_steps": [
+                "Reviewed checking account showing repeated deposits under reporting threshold.",
+                "Observed clustered cash deposits and round amounts consistent with CTR avoidance.",
+                "Mapped indicators to structuring typology referenced under BSA obligations.",
+                "High confidence due to sequencing and denomination patterns in source data.",
+                "Classification Structuring fits best versus laundering-only or fraud hypotheses.",
+            ],
+            "key_indicators": ["threshold avoidance", "cash deposits"],
+            "risk_level": "High",
+        }
+
+        def _msg(content):
+            m = Mock()
+            m.choices = [Mock()]
+            m.choices[0].message.content = content
+            return m
+
+        mock_client = Mock()
+        mock_client.chat.completions.create.side_effect = [
+            _msg("Some prose instead of JSON"),
+            _msg(json.dumps(payload)),
+        ]
+        logger = ExplainabilityLogger("test_retry_ok.jsonl")
+        agent = RiskAnalystAgent(mock_client, logger)
+        customer = CustomerData(
+            customer_id="CUST_RETRY",
+            name="Retry Customer",
+            date_of_birth="1980-01-01",
+            ssn_last_4="1234",
+            address="1 Retry St",
+            customer_since="2020-01-01",
+            risk_rating="Low",
+        )
+        case = CaseData(
+            case_id="CASE_RETRY",
+            customer=customer,
+            accounts=[],
+            transactions=[
+                TransactionData(
+                    transaction_id="TXN_RETRY",
+                    account_id="ACC_RETRY",
+                    transaction_date="2025-01-01",
+                    transaction_type="Test",
+                    amount=50.0,
+                    description="x",
+                    method="Wire",
+                )
+            ],
+            case_created_at=datetime.now().isoformat(),
+            data_sources={"retry": "fixture"},
+        )
+        result = agent.analyze_case(case)
+        assert result.classification == "Structuring"
+        assert mock_client.chat.completions.create.call_count == 2
+        assert logger.entries[-1]["success"] is True
+        assert logger.entries[-1]["outputs"]["json_recovery"]["path"] == "retry"
+
+        if os.path.exists("test_retry_ok.jsonl"):
+            os.remove("test_retry_ok.jsonl")
+
+    @pytest.mark.skipif(not RISK_ANALYST_IMPLEMENTED, reason="Risk Analyst Agent not implemented yet")
+    def test_analyze_case_recovers_trailing_comma_without_retry(self):
+        trailing_comma_blob = (
+            '{"classification":"Other","confidence_score":0.42,'
+            '"reasoning_steps":["s1","s2","s3","s4","s5"],'
+            '"key_indicators":["k"],'
+            '"risk_level":"Low",}'
+        )
+        mock_client = Mock()
+        mock_resp = Mock()
+        mock_resp.choices = [Mock()]
+        mock_resp.choices[0].message.content = trailing_comma_blob
+        mock_client.chat.completions.create.return_value = mock_resp
+        logger = ExplainabilityLogger("test_trailing_comma.jsonl")
+        agent = RiskAnalystAgent(mock_client, logger)
+        customer = CustomerData(
+            customer_id="CUST_TC",
+            name="Comma Customer",
+            date_of_birth="1980-01-01",
+            ssn_last_4="1234",
+            address="Street",
+            customer_since="2020-01-01",
+            risk_rating="Low",
+        )
+        case = CaseData(
+            case_id="CASE_COMMA",
+            customer=customer,
+            accounts=[],
+            transactions=[
+                TransactionData(
+                    transaction_id="TXN_TC",
+                    account_id="ACC_TC",
+                    transaction_date="2025-01-02",
+                    transaction_type="Test",
+                    amount=10.0,
+                    description="d",
+                    method="ACH",
+                )
+            ],
+            case_created_at=datetime.now().isoformat(),
+            data_sources={"tc": "fixture"},
+        )
+        result = agent.analyze_case(case)
+        assert isinstance(result, RiskAnalystOutput)
+        assert mock_client.chat.completions.create.call_count == 1
+        assert logger.entries[-1]["outputs"]["json_recovery"]["path"] == "direct"
+
+        if os.path.exists("test_trailing_comma.jsonl"):
+            os.remove("test_trailing_comma.jsonl")
+
     @pytest.mark.skipif(not RISK_ANALYST_IMPLEMENTED, reason="Risk Analyst Agent not implemented yet")
     def test_extract_json_from_code_block(self):
         """Test JSON extraction from code blocks"""
@@ -242,7 +468,7 @@ class TestRiskAnalystAgent:
 {
     "classification": "Fraud",
     "confidence_score": 0.9,
-    "reasoning": "Clear fraud indicators",
+    "reasoning_steps": ["S1 fraud data review.", "S2 suspicious pattern.", "S3 AML mapping.", "S4 high severity.", "S5 Fraud decision."],
     "key_indicators": ["suspicious_pattern"],
     "risk_level": "Critical"
 }
@@ -261,7 +487,7 @@ That completes the analysis.'''
         """Test JSON extraction from plain text response"""
         agent = RiskAnalystAgent(Mock(), Mock())
         
-        response_plain_json = '''{"classification": "Money_Laundering", "confidence_score": 0.75, "reasoning": "Complex layering scheme", "key_indicators": ["multiple_transfers"], "risk_level": "High"}'''
+        response_plain_json = '''{"classification": "Money_Laundering", "confidence_score": 0.75, "reasoning_steps": ["Step1", "Step2", "Step3", "Step4", "Step5"], "key_indicators": ["multiple_transfers"], "risk_level": "High"}'''
         
         extracted = agent._extract_json_from_response(response_plain_json)
         parsed = json.loads(extracted)
@@ -357,8 +583,16 @@ That completes the analysis.'''
         agent = RiskAnalystAgent(Mock(), Mock())
         prompt = agent.system_prompt
         
-        # Check for key Chain-of-Thought elements
-        assert "Chain-of-Thought" in prompt or "step-by-step" in prompt
+        # Check for stepwise / CoT framing
+        assert "reasoning_steps" in prompt
+        cot_markers = (
+            "Chain-of-Thought",
+            "step-by-step",
+            "Data Review",
+            "Pattern Recognition",
+            "five",
+        )
+        assert any(marker.lower() in prompt.lower() for marker in cot_markers)
         assert "Financial Crime" in prompt or "Risk Analyst" in prompt
         
         # Check for classification categories
@@ -372,9 +606,11 @@ That completes the analysis.'''
         assert "JSON" in prompt
         assert "classification" in prompt
         assert "confidence_score" in prompt
-        assert "reasoning" in prompt
+        assert "reasoning_steps" in prompt
         assert "key_indicators" in prompt
         assert "risk_level" in prompt
+        assert "calibration" in prompt.lower()
+        assert "0.48" in prompt
     
     @pytest.mark.skipif(not RISK_ANALYST_IMPLEMENTED, reason="Risk Analyst Agent not implemented yet")
     def test_api_call_parameters(self):
@@ -382,7 +618,7 @@ That completes the analysis.'''
         mock_client = Mock()
         mock_response = Mock()
         mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''{"classification": "Other", "confidence_score": 0.5, "reasoning": "Test", "key_indicators": ["test"], "risk_level": "Low"}'''
+        mock_response.choices[0].message.content = '''{"classification": "Other", "confidence_score": 0.44, "reasoning_steps": ["s1","s2","s3","s4","s5"], "key_indicators": ["test"], "risk_level": "Low"}'''
         mock_client.chat.completions.create.return_value = mock_response
         
         logger = ExplainabilityLogger("test_api.jsonl")
@@ -422,7 +658,7 @@ That completes the analysis.'''
         call_args = mock_client.chat.completions.create.call_args
         assert call_args.kwargs["model"] == "gpt-3.5-turbo"
         assert call_args.kwargs["temperature"] == 0.3
-        assert call_args.kwargs["max_tokens"] == 1000
+        assert call_args.kwargs["max_tokens"] == 1400
         assert len(call_args.kwargs["messages"]) == 2
         assert call_args.kwargs["messages"][0]["role"] == "system"
         assert call_args.kwargs["messages"][1]["role"] == "user"
@@ -430,3 +666,65 @@ That completes the analysis.'''
         # Cleanup
         if os.path.exists("test_api.jsonl"):
             os.remove("test_api.jsonl")
+
+
+def test_risk_analyst_schema_requires_exactly_five_reasoning_steps():
+    from pydantic import ValidationError
+
+    try:
+        from src.foundation_sar import RiskAnalystOutput
+    except ImportError:
+        pytest.skip("foundation_sar not available")
+
+    with pytest.raises(ValidationError):
+        RiskAnalystOutput(
+            classification="Other",
+            confidence_score=0.42,
+            reasoning_steps=["a", "b"],
+            key_indicators=["k"],
+            risk_level="Low",
+        )
+
+    with pytest.raises(ValidationError):
+        RiskAnalystOutput(
+            classification="Other",
+            confidence_score=0.85,
+            reasoning_steps=["a", "b", "c", "d", "e"],
+            key_indicators=["k"],
+            risk_level="Low",
+        )
+
+    out = RiskAnalystOutput(
+        classification="Other",
+        confidence_score=0.55,
+        reasoning_steps=[
+            "Data Review: summarized fixture customer and transactions.",
+            "Pattern Recognition: no dominant typology; mixed low-signal flows.",
+            "Regulatory Mapping: compared to SAR filing guidance generically.",
+            "Risk Quantification: moderate residual uncertainty retained.",
+            "Classification Decision: Other selected as conservative label.",
+        ],
+        key_indicators=["mixed_activity"],
+        risk_level="Medium",
+    )
+    assert len(out.reasoning_steps) == 5
+    assert "Step 5:" in out.reasoning
+
+
+@pytest.mark.parametrize(
+    "risk_level",
+    ["Low", "Medium", "High", "Critical"],
+)
+def test_risk_calibration_accepts_midpoint_for_each_risk_level(risk_level):
+    from src.foundation_sar import RiskAnalystOutput, RISK_LEVEL_CONFIDENCE_BANDS
+
+    lo, hi = RISK_LEVEL_CONFIDENCE_BANDS[risk_level]
+    mid = round((lo + hi) / 2, 3)
+    RiskAnalystOutput(
+        classification="Other",
+        confidence_score=mid,
+        reasoning_steps=[f"S{i}: align {risk_level} band." for i in range(1, 6)],
+        key_indicators=["calibration_fixture"],
+        risk_level=risk_level,
+    )
+
