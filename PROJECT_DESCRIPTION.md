@@ -164,8 +164,11 @@ cp .env.template .env
 
 **4. Configure your OpenAI API key:**
 ```bash
-# Edit .env file and add:
-OPENAI_API_KEY=your_actual_api_key_here
+# Edit .env file and add (official OpenAI — default endpoint https://api.openai.com/v1 ):
+OPENAI_API_KEY=sk-your-key-here
+
+# Optional — only when using Udacity Vocareum routing:
+# OPENAI_BASE_URL=https://openai.vocareum.com/v1
 ```
 
 **5. Verify installation:**

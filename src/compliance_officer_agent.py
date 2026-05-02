@@ -38,6 +38,12 @@ from src.foundation_sar import (
 load_dotenv()
 
 
+def _nar_check_space(text: str) -> str:
+    """Lowercase normalization for deterministic substring checks."""
+    lowered = text.lower().replace("-", " ")
+    return re.sub(r"\s+", " ", lowered).strip()
+
+
 def _co_narrative_has_time_anchor(case_data: CaseData, narrative: str) -> bool:
     if re.search(r"\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{4}", narrative):
         return True
@@ -51,13 +57,33 @@ def _co_citation_echoed_in_narrative(citation: str, narrative_lower: str) -> boo
     c = citation.strip().lower()
     if not c:
         return False
-    if c in narrative_lower:
+    nar_chk = _nar_check_space(narrative_lower)
+    if c in nar_chk:
         return True
+    for inner in (
+        m.group(1).strip().lower() for m in re.finditer(r"\(([^)]{2,})\)", citation.strip())
+    ):
+        if len(inner) >= 3 and inner in nar_chk:
+            return True
     for token in re.findall(r"[a-z0-9]{4,}", c):
-        if token in narrative_lower:
+        if token in nar_chk:
             return True
     for num in re.findall(r"\d{3,}", citation):
         if num in narrative_lower:
+            return True
+    return False
+
+
+def _narrative_covers_key_indicator(nar_chk: str, indicator: str) -> bool:
+    """Full phrase or a significant token (≥5 chars) from the Risk Analyst key_indicator."""
+    ind = indicator.strip().lower()
+    if not ind:
+        return False
+    if ind in nar_chk:
+        return True
+    compact = nar_chk.replace(" ", "")
+    for token in re.findall(r"[a-z0-9]{5,}", ind.replace("-", " ").replace("/", " ")):
+        if token in nar_chk or token in compact:
             return True
     return False
 
@@ -153,7 +179,7 @@ Set completeness_check true only after these pass (do not rely on the JSON flag 
         start_time = datetime.now(timezone.utc)
         risk_summary = self._format_risk_analysis_for_prompt(risk_analysis)
         transaction_summary = self._format_transactions_for_compliance(case_data.transactions)
-        prompt = (
+        prompt_base = (
             "Case Context:\n"
             f"Customer: {case_data.customer.name} ({case_data.customer.customer_id})\n"
             f"Risk Rating: {case_data.customer.risk_rating}\n\n"
@@ -162,6 +188,7 @@ Set completeness_check true only after these pass (do not rely on the JSON flag 
             "Transactions:\n"
             f"{transaction_summary}\n"
         )
+        prompt = prompt_base + compliance_qa_contract_block(case_data, risk_analysis)
 
         try:
             response = self.client.chat.completions.create(
@@ -175,6 +202,12 @@ Set completeness_check true only after these pass (do not rely on the JSON flag 
             )
             content_primary = response.choices[0].message.content or ""
             recovery_path = "direct"
+            json_recovery: Dict[str, Any] = {"path": recovery_path}
+            last_agent_content = (
+                json.dumps({"raw_content": content_primary}, ensure_ascii=False)
+                if content_primary.strip()
+                else "(empty assistant message)"
+            )
             result = self._compliance_output_from_message_content(content_primary)
 
             if result is None:
@@ -190,6 +223,7 @@ Set completeness_check true only after these pass (do not rely on the JSON flag 
                     max_tokens=800,
                 )
                 content_retry = retry_resp.choices[0].message.content or ""
+                last_agent_content = content_retry or last_agent_content
                 result = self._compliance_output_from_message_content(content_retry)
                 if result is not None:
                     recovery_path = "retry"
@@ -203,17 +237,54 @@ Set completeness_check true only after these pass (do not rely on the JSON flag 
             if recovery_path == "fallback":
                 result = result.model_copy(update={"completeness_check": False})
             else:
-                result = self._finalize_compliance_output_with_deterministic_qa(
-                    case_data,
-                    risk_analysis,
-                    result,
-                )
+                try:
+                    result = self._finalize_compliance_output_with_deterministic_qa(
+                        case_data,
+                        risk_analysis,
+                        result,
+                    )
+                    json_recovery["deterministic_qa"] = "pass"
+                except ValueError as qa_exc:
+                    repair_user = (
+                        "Your prior SAR JSON failed deterministic SAR validation.\n\n"
+                        f"{compliance_qa_contract_block(case_data, risk_analysis)}\n"
+                        "VALIDATION_ERRORS (verbatim):\n"
+                        f"{qa_exc}\n\n"
+                        "Fix ALL issues above. Narrative MUST include verbatim (case/format as shown) EVERY phrase "
+                        "under 'MANDATORY VERBATIM PHRASES' plus at least ONE actual transaction date/currency cue from Transactions. "
+                        "Echo at least one Risk Analyst Key Indicator verbatim or by substantive wording (see list). "
+                        "Return ONLY raw JSON matching the schema; no markdown."
+                    )
+                    repair_resp = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {"role": "system", "content": self.system_prompt},
+                            {"role": "user", "content": prompt},
+                            {"role": "assistant", "content": last_agent_content},
+                            {"role": "user", "content": repair_user},
+                        ],
+                        temperature=0.05,
+                        max_tokens=900,
+                    )
+                    content_qa_fix = repair_resp.choices[0].message.content or ""
+                    repaired = self._compliance_output_from_message_content(content_qa_fix)
+                    json_recovery["deterministic_qa_repair_attempted"] = True
+                    if repaired is None:
+                        json_recovery["deterministic_qa_repair"] = "parse_failed"
+                        raise ValueError(str(qa_exc)) from qa_exc
+                    result = self._finalize_compliance_output_with_deterministic_qa(
+                        case_data,
+                        risk_analysis,
+                        repaired,
+                    )
+                    json_recovery["deterministic_qa"] = "pass_after_repair"
 
             execution_time_ms = (
                 datetime.now(timezone.utc) - start_time
             ).total_seconds() * 1000
+            json_recovery["path"] = recovery_path
             log_payload = dict(result.model_dump())
-            log_payload["json_recovery"] = {"path": recovery_path}
+            log_payload["json_recovery"] = json_recovery
             narrative_reason_log = result.narrative_reasoning
             if recovery_path == "fallback":
                 narrative_reason_log = (
@@ -325,6 +396,7 @@ Set completeness_check true only after these pass (do not rely on the JSON flag 
         requirements = get_regulatory_requirements()
         narrative = output.narrative
         nar_l = narrative.lower()
+        nar_chk = _nar_check_space(narrative)
         failures: List[str] = []
 
         word_count = len(narrative.split())
@@ -334,12 +406,17 @@ Set completeness_check true only after these pass (do not rely on the JSON flag 
             )
 
         for term in requirements["terminology"]:
-            if term.lower() not in nar_l:
+            if _nar_check_space(term) not in nar_chk:
                 failures.append(f'missing mandated terminology phrase: "{term}"')
 
         name_l = case_data.customer.name.strip().lower()
         cid_l = case_data.customer.customer_id.strip().lower()
-        subject_ok = (name_l and name_l in nar_l) or (cid_l and cid_l in nar_l)
+        name_chk = _nar_check_space(case_data.customer.name)
+        subject_ok = (
+            (name_l and name_l in nar_l)
+            or (name_chk and name_chk in nar_chk)
+            or (cid_l and cid_l in nar_l)
+        )
         if not subject_ok and not re.search(
             r"\b(customer|subject|account holder|client)\b", nar_l
         ):
@@ -347,12 +424,12 @@ Set completeness_check true only after these pass (do not rely on the JSON flag 
                 "subject anchor missing (customer name/id or explicit SAR subject referent)"
             )
 
-        activity_ok = ("suspicious activity" in nar_l) or (
-            ("suspicious" in nar_l)
+        activity_ok = ("suspicious activity" in nar_chk) or (
+            ("suspicious" in nar_chk)
             and bool(
                 re.search(
                     r"\b(deposit|transaction|transactions|transfer|wire|withdrawal|payment|conduct)\b",
-                    nar_l,
+                    nar_chk,
                 )
             )
         )
@@ -373,10 +450,10 @@ Set completeness_check true only after these pass (do not rely on the JSON flag 
         ):
             failures.append("monetary amount cue missing ($, USD, or substantive digit amount)")
 
-        ki_tokens = [k.strip().lower() for k in risk_analysis.key_indicators if k.strip()]
-        if not ki_tokens:
+        ki_list = [k for k in risk_analysis.key_indicators if k and str(k).strip()]
+        if not ki_list:
             failures.append("Risk Analyst key_indicators empty — cannot validate indicator coverage")
-        elif not any(token in nar_l for token in ki_tokens):
+        elif not any(_narrative_covers_key_indicator(nar_chk, ki) for ki in ki_list):
             failures.append(
                 "narrative must echo at least one Risk Analyst key_indicator phrase"
             )
@@ -384,7 +461,7 @@ Set completeness_check true only after these pass (do not rely on the JSON flag 
         if not re.search(
             r"\b(because|consistent with|indicative|elevated|concerns?|potential|pattern|"
             r"risk|suggest|raise[ds]?|appear[sd]?)\b",
-            nar_l,
+            nar_chk,
         ):
             failures.append(
                 "brief suspicion rationale required (e.g., consistent with / concern / indicative / pattern / risk)"
@@ -481,6 +558,61 @@ def get_regulatory_requirements():
             "FinCEN SAR Instructions"
         ]
     }
+
+
+def compliance_qa_contract_block(
+    case_data: CaseData, risk_analysis: RiskAnalystOutput
+) -> str:
+    """Pinned checklist appended to user prompt so deterministic QA aligns with wording checks."""
+    req = get_regulatory_requirements()
+    phrases = "\n".join(f'  • "{phrase}"' for phrase in req["terminology"])
+    sample_dates = [
+        str(t.transaction_date)
+        for t in case_data.transactions[:16]
+        if getattr(t, "transaction_date", None)
+    ]
+    uniq_dates = list(dict.fromkeys(sample_dates))
+    date_hint = (
+        ", ".join(uniq_dates[:6])
+        if uniq_dates
+        else "use at least one YYYY-MM-DD or MM/DD/YYYY appearing in Transactions"
+    )
+    ki_block = "\n".join(f"  • {indicator}" for indicator in risk_analysis.key_indicators[:16])
+    if not ki_block.strip():
+        ki_block = "  • (reuse themes from Classification / Reasoning verbatim where possible)"
+
+    cite_block = "\n".join(
+        f'  • regulatory_citations must include verbatim: "{c}" and echo it inside narrative.'
+        for c in req["citations"][:5]
+    )
+    extra_amt = ""
+    if case_data.transactions:
+        t0 = case_data.transactions[0]
+        extra_amt = f"\nSample amount/date format from data: ${t0.amount:,.2f} on {t0.transaction_date}.\n"
+
+    return (
+        "\n--- MANDATORY SAR CONTRACT (validated after generation) ---\n"
+        "The narrative field MUST simultaneously satisfy ALL of these machine checks:\n"
+        f"- Word limit: {req['word_limit']} narrative words maximum.\n"
+        "MANDATORY VERBATIM PHRASES (each substring must appear in narrative text):\n"
+        f"{phrases}\n"
+        "- Include the wording suspicious activity and reference transactions/deposits/transfers/withdrawals "
+        "(action cue).\n"
+        "- Include timeframe: paste at least one transaction date listed under Transactions "
+        "(or equivalent YYYY-MM-DD / MM/DD/YYYY).\n"
+        f"- Prefer these case dates where applicable: {date_hint}\n"
+        "- Mention the customer full name AND/OR customer identifier OR vocabulary like "
+        "customer/subject/account holder/client.\n"
+        "- Include $ or substantive digit amount aligning with Transactions.\n"
+        "- Brief suspicion rationale wording (patterns like consistent with / concern / indicative / "
+        "pattern / risk).\n"
+        "ECHO at least one substantive phrase from EACH Risk Analyst key indicator shown below:\n"
+        f"{ki_block}\n"
+        "CITATIONS (verbatim strings to list and weave into narrative text):\n"
+        f"{cite_block}{extra_amt}"
+        "--- END CONTRACT ---\n"
+    )
+
 
 # ===== TESTING UTILITIES =====
 

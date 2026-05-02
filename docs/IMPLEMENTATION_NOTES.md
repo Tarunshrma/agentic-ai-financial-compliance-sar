@@ -98,9 +98,9 @@ See also: `**outputs/README.md**`.
 ### 5.1 Environment
 
 1. Python 3.10+ compatible with `**requirements.txt**`.
-2. Copy `**.env.template**` → `**.env**`, set `**OPENAI_API_KEY**` to the Udacity Vocareum key (`**voc-…**`).
+2. Create `**.env**` at the project root: `**OPENAI_API_KEY**` = your OpenAI key (`sk-…` from [platform.openai.com](https://platform.openai.com/api-keys)). **Optional:** `**OPENAI_BASE_URL=https://openai.vocareum.com/v1**` only if you still use Udacity Vocareum.
 3. Install: `pip install -r requirements.txt`.
-4. For `**03**`/`**02**` API paths, notebooks use Vocareum’s OpenAI base URL as configured (see notebook “OpenAI Setup” cells).
+4. Notebooks **`02`** / **`03`** build `openai.OpenAI` with **`OPENAI_BASE_URL`** only when set; otherwise the official **`https://api.openai.com/v1`** endpoint is used.
 
 ### 5.2 Validate implementation (no API required for most tests)
 

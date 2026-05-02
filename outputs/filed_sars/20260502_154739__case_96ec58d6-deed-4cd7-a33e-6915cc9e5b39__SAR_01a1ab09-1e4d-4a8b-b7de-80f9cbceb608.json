@@ -1,0 +1,47 @@
+{
+  "sar_metadata": {
+    "sar_id": "SAR_01a1ab09-1e4d-4a8b-b7de-80f9cbceb608",
+    "filing_date": "2026-05-02T15:49:59.438473+00:00",
+    "filing_type": "Suspicious Activity Report",
+    "ai_generated": true,
+    "review_status": "human_approved",
+    "case_id": "96ec58d6-deed-4cd7-a33e-6915cc9e5b39"
+  },
+  "subject_information": {
+    "customer_name": "Tracy Lewis",
+    "customer_id": "CUST_0053",
+    "address": "8016 Nicole Stream Suite 650, Williamsside, ID 48017",
+    "customer_since": "2024-05-11",
+    "risk_rating": "Medium"
+  },
+  "suspicious_activity": {
+    "classification": "Money_Laundering",
+    "risk_level": "High",
+    "confidence_score": 0.75,
+    "narrative": "Suspicious activity was identified in the accounts of Tracy Lewis (CUST_0053) involving high-value transactions and high average monthly balances, consistent with money laundering. From 2025-03-31 to 2025-07-31, a series of transactions, including a $9,786.92 cash deposit on 2025-07-31, exceeded the regulatory threshold. These patterns raise concern under the Bank Secrecy Act (31 CFR 1020.320 (BSA)) and warrant further investigation by the financial institution as per 12 CFR 21.11 (SAR Filing) and FinCEN SAR Instructions.",
+    "key_indicators": [
+      "High average monthly balances",
+      "High-value transactions"
+    ],
+    "ai_reasoning": "Step 1: The customer, Tracy Lewis, holds three active accounts with high average monthly balances. The total transaction amount across these accounts is significantly high, with an average transaction amount of $2,915.16.\nStep 2: The customer's transactions include a mix of ATM withdrawals, ACH credits, and debit purchases. There is a pattern of high-value transactions, which could be an attempt to legitimize illicit funds.\nStep 3: The observed patterns align with money laundering typologies,..."
+  },
+  "regulatory_compliance": {
+    "citations": [
+      "31 CFR 1020.320 (BSA)",
+      "12 CFR 21.11 (SAR Filing)",
+      "FinCEN SAR Instructions"
+    ],
+    "narrative_word_count": 74,
+    "compliance_status": "approved",
+    "completeness_check": true
+  },
+  "audit_trail": {
+    "case_id": "96ec58d6-deed-4cd7-a33e-6915cc9e5b39",
+    "processing_date": "2026-05-02T15:49:59.438473+00:00",
+    "ai_agents_used": [
+      "RiskAnalyst",
+      "ComplianceOfficer"
+    ],
+    "human_reviewer": "compliance_officer"
+  }
+}

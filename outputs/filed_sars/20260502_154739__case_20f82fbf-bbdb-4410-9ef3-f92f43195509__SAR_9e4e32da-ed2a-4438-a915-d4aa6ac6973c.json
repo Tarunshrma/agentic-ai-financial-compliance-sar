@@ -1,0 +1,48 @@
+{
+  "sar_metadata": {
+    "sar_id": "SAR_9e4e32da-ed2a-4438-a915-d4aa6ac6973c",
+    "filing_date": "2026-05-02T15:54:21.709132+00:00",
+    "filing_type": "Suspicious Activity Report",
+    "ai_generated": true,
+    "review_status": "human_approved",
+    "case_id": "20f82fbf-bbdb-4410-9ef3-f92f43195509"
+  },
+  "subject_information": {
+    "customer_name": "Michael Stanley",
+    "customer_id": "CUST_0062",
+    "address": "230 Tiffany Mountain Suite 863, South Michael, KY 25205",
+    "customer_since": "2022-04-01",
+    "risk_rating": "Medium"
+  },
+  "suspicious_activity": {
+    "classification": "Money_Laundering",
+    "risk_level": "High",
+    "confidence_score": 0.75,
+    "narrative": "Suspicious activity was identified in the accounts of Michael Stanley (CUST_0062) between 2025-02-13 and 2025-07-29. This activity, including frequent high-value transactions and high average monthly balances, is consistent with money laundering patterns and exceeds the regulatory threshold. Notably, a closed account with a significant balance of $93,306.69 was observed. These actions raise concerns under the Bank Secrecy Act and warrant the financial institution's SAR filing under 31 CFR 1020.320 (BSA) and 12 CFR 21.11 (SAR Filing) as per FinCEN SAR Instructions.",
+    "key_indicators": [
+      "high average monthly balances",
+      "frequent high-value transactions",
+      "closed account with significant balance"
+    ],
+    "ai_reasoning": "Step 1: Customer Michael Stanley has two active Money Market accounts with high average monthly balances and a closed Savings account. He has conducted 90 transactions totaling $380,633.78, with an average transaction amount of $4,229.26.\nStep 2: Key suspicious indicators include high average monthly balances in Money Market accounts, frequent transactions with high amounts, and a closed Savings account with a current balance of $93,306.69.\nStep 3: These indicators align with AML/BSA typologi..."
+  },
+  "regulatory_compliance": {
+    "citations": [
+      "31 CFR 1020.320 (BSA)",
+      "12 CFR 21.11 (SAR Filing)",
+      "FinCEN SAR Instructions"
+    ],
+    "narrative_word_count": 81,
+    "compliance_status": "approved",
+    "completeness_check": true
+  },
+  "audit_trail": {
+    "case_id": "20f82fbf-bbdb-4410-9ef3-f92f43195509",
+    "processing_date": "2026-05-02T15:54:21.709132+00:00",
+    "ai_agents_used": [
+      "RiskAnalyst",
+      "ComplianceOfficer"
+    ],
+    "human_reviewer": "compliance_officer"
+  }
+}

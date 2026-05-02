@@ -54,7 +54,7 @@ For what was implemented beyond the starter, the JSONL audit schema (including h
 ### Prerequisites
 
 - Python 3.8+
-- Vocareum OpenAI API key (from your Udacity workspace "Cloud Resources")
+- [OpenAI API key](https://platform.openai.com/api-keys) (`sk-…`) for official `https://api.openai.com/v1`, **or** Udacity Vocareum keys with `OPENAI_BASE_URL` (see below)
 - VS Code with Jupyter extension (recommended)
 
 ### 1. Environment Setup
@@ -66,24 +66,25 @@ cd project/starter
 # Install dependencies
 pip install -r requirements.txt
 
-# Set up your Vocareum OpenAI API key
-cp .env.template .env
-# Edit .env and replace the placeholder with your actual Vocareum API key
+# API keys: create .env in the project root (see .env.template if present)
+# OPENAI_API_KEY=sk-your-key-here
+# Optional — only for Udacity Vocareum routing:
+# OPENAI_BASE_URL=https://openai.vocareum.com/v1
 ```
 
-### 2. Vocareum OpenAI API Key Setup
+### 2. OpenAI API key and base URL
 
-**Important:** This project uses Vocareum OpenAI API keys, not direct OpenAI keys.
+**Default (recommended for your own key):** set `OPENAI_API_KEY` to an OpenAI dashboard key (`sk-…`). Leave `OPENAI_BASE_URL` unset — the client uses **https://api.openai.com/v1** automatically (see `notebooks/02` and `notebooks/03` OpenAI setup cells).
 
-**Getting Your API Key:**
-1. In your Udacity workspace, click "Cloud Resources" in the navigation pane
-2. Copy the provided OpenAI API key (starts with `voc-`)
-3. Paste it into your `.env` file as `OPENAI_API_KEY=voc-your-actual-key-here`
+**Udacity Vocareum (optional):** set `OPENAI_API_KEY` to the `voc-…` key from Cloud Resources and add:
 
-**Key Differences:**
-- Vocareum keys start with `voc-` instead of `sk-`
-- API calls are routed through `https://openai.vocareum.com/v1`
-- Budget and usage are managed by Udacity through Vocareum
+```bash
+OPENAI_BASE_URL=https://openai.vocareum.com/v1
+```
+
+Alternatively call `create_vocareum_openai_client()` from `src` (see `src/__init__.py`).
+
+Programmatic helper for either mode: `from src import create_openai_client` (respects `OPENAI_BASE_URL` when set).
 
 ### 3. Project Structure
 

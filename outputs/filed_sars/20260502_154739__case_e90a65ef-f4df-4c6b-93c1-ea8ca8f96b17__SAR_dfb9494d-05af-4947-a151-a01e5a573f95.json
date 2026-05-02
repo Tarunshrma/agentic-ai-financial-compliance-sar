@@ -1,0 +1,47 @@
+{
+  "sar_metadata": {
+    "sar_id": "SAR_dfb9494d-05af-4947-a151-a01e5a573f95",
+    "filing_date": "2026-05-02T15:54:03.367593+00:00",
+    "filing_type": "Suspicious Activity Report",
+    "ai_generated": true,
+    "review_status": "human_approved",
+    "case_id": "e90a65ef-f4df-4c6b-93c1-ea8ca8f96b17"
+  },
+  "subject_information": {
+    "customer_name": "Jacqueline Rodriguez",
+    "customer_id": "CUST_0111",
+    "address": "49331 Lewis Views Apt. 516, Lake Maryshire, DE 59549",
+    "customer_since": "2022-02-27",
+    "risk_rating": "High"
+  },
+  "suspicious_activity": {
+    "classification": "Structuring",
+    "risk_level": "High",
+    "confidence_score": 0.76,
+    "narrative": "Suspicious activity was identified in the accounts of Jacqueline Rodriguez (CUST_0111) between February and July 2025. The customer exhibited a pattern of high frequency transactions, consistently below the regulatory threshold of $10,000, indicative of structuring. Notably, a transaction of $2,563.47 occurred on 2025-03-01. This activity raises concerns of potential money laundering, violating the Bank Secrecy Act. The financial institution is obligated to report under 31 CFR 1020.320 (BSA), 12 CFR 21.11 (SAR Filing), and as per FinCEN SAR Instructions.",
+    "key_indicators": [
+      "high frequency of transactions",
+      "transactions below reporting threshold"
+    ],
+    "ai_reasoning": "Step 1: Customer Jacqueline Rodriguez has three active accounts with high average monthly balances. The total transactions amount to $386,834.91, with an average transaction amount of $3,196.98.\nStep 2: The customer's transactions are consistent and frequent, but the amounts are kept below the $10,000 reporting threshold, which is a common tactic used in structuring to avoid detection.\nStep 3: This behavior aligns with the AML/BSA typology of structuring, also known as smurfing, where funds a..."
+  },
+  "regulatory_compliance": {
+    "citations": [
+      "31 CFR 1020.320 (BSA)",
+      "12 CFR 21.11 (SAR Filing)",
+      "FinCEN SAR Instructions"
+    ],
+    "narrative_word_count": 79,
+    "compliance_status": "approved",
+    "completeness_check": true
+  },
+  "audit_trail": {
+    "case_id": "e90a65ef-f4df-4c6b-93c1-ea8ca8f96b17",
+    "processing_date": "2026-05-02T15:54:03.367593+00:00",
+    "ai_agents_used": [
+      "RiskAnalyst",
+      "ComplianceOfficer"
+    ],
+    "human_reviewer": "compliance_officer"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "sar_metadata": {
+    "sar_id": "SAR_777fbf5d-49f4-4eda-9c94-780abb3f4d6d",
+    "filing_date": "2026-05-02T15:48:36.748247+00:00",
+    "filing_type": "Suspicious Activity Report",
+    "ai_generated": true,
+    "review_status": "human_approved",
+    "case_id": "4336e05d-1fc8-4cf1-b159-245ce2ef035b"
+  },
+  "subject_information": {
+    "customer_name": "Jacqueline Rodriguez",
+    "customer_id": "CUST_0111",
+    "address": "49331 Lewis Views Apt. 516, Lake Maryshire, DE 59549",
+    "customer_since": "2022-02-27",
+    "risk_rating": "High"
+  },
+  "suspicious_activity": {
+    "classification": "Structuring",
+    "risk_level": "High",
+    "confidence_score": 0.75,
+    "narrative": "Suspicious activity was identified in the accounts of Jacqueline Rodriguez (CUST_0111). A pattern of consistent transactions below the regulatory threshold was observed, indicative of structuring, a common money laundering technique. For instance, a transaction of $2,563.47 was made on 2025-03-01. This activity raises concern as it appears to circumvent the Bank Secrecy Act's reporting requirements, violating 31 CFR 1020.320 (BSA) and 12 CFR 21.11 (SAR Filing). The financial institution is obliged to report such activity per FinCEN SAR Instructions.",
+    "key_indicators": [
+      "consistent transactions below reporting threshold"
+    ],
+    "ai_reasoning": "Step 1: Customer Jacqueline Rodriguez has three active accounts with high average monthly balances. She has conducted a total of 121 transactions with an average amount of $3196.98, which is significantly lower than the account balances.\nStep 2: The customer's transactions are consistent and frequent, with amounts just below the $3,000 reporting threshold. This pattern of activity suggests an attempt to avoid detection by authorities.\nStep 3: This behavior aligns with the AML/BSA typology of ..."
+  },
+  "regulatory_compliance": {
+    "citations": [
+      "31 CFR 1020.320 (BSA)",
+      "12 CFR 21.11 (SAR Filing)",
+      "FinCEN SAR Instructions"
+    ],
+    "narrative_word_count": 79,
+    "compliance_status": "approved",
+    "completeness_check": true
+  },
+  "audit_trail": {
+    "case_id": "4336e05d-1fc8-4cf1-b159-245ce2ef035b",
+    "processing_date": "2026-05-02T15:48:36.748247+00:00",
+    "ai_agents_used": [
+      "RiskAnalyst",
+      "ComplianceOfficer"
+    ],
+    "human_reviewer": "compliance_officer"
+  }
+}

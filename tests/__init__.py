@@ -5,7 +5,6 @@ Unit tests for the SAR processing system components.
 Run tests with: python -m pytest tests/
 
 Note: Tests use mock OpenAI API responses to avoid consuming actual API quota.
-Tests are configured to work with Vocareum OpenAI API routing.
 """
 
 import os
@@ -18,8 +17,8 @@ def create_mock_openai_client():
     """
     Create a mock OpenAI client for testing.
     
-    This function creates a mock client that simulates Vocareum OpenAI API
-    responses without making actual API calls.
+    This function creates a mock client compatible with ``openai.OpenAI`` chat completions,
+    without making real API calls.
     
     Returns:
         Mock: Mock OpenAI client for testing
@@ -45,13 +44,13 @@ def setup_test_environment():
     the SAR processing system without actual API calls.
     """
     # Set up mock API key for testing
-    os.environ['OPENAI_API_KEY'] = 'voc-test-api-key-for-unit-tests-only'
+    os.environ['OPENAI_API_KEY'] = 'sk-test-api-key-for-unit-tests-only'
 
 
 @pytest.fixture
 def mock_vocareum_client():
     """
-    Pytest fixture providing a mock Vocareum OpenAI client.
+    Pytest fixture providing a mock OpenAI client.
     
     Returns:
         Mock: Configured mock client for testing

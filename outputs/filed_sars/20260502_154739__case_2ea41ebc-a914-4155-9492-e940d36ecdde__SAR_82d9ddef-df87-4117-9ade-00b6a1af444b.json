@@ -1,0 +1,48 @@
+{
+  "sar_metadata": {
+    "sar_id": "SAR_82d9ddef-df87-4117-9ade-00b6a1af444b",
+    "filing_date": "2026-05-02T15:49:31.647742+00:00",
+    "filing_type": "Suspicious Activity Report",
+    "ai_generated": true,
+    "review_status": "human_approved",
+    "case_id": "2ea41ebc-a914-4155-9492-e940d36ecdde"
+  },
+  "subject_information": {
+    "customer_name": "Cindy Clayton",
+    "customer_id": "CUST_0057",
+    "address": "08330 Robert Stravenue, Garciaberg, AL 72636",
+    "customer_since": "2020-05-26",
+    "risk_rating": "High"
+  },
+  "suspicious_activity": {
+    "classification": "Money_Laundering",
+    "risk_level": "Critical",
+    "confidence_score": 0.85,
+    "narrative": "Suspicious activity was identified in the accounts of Cindy Clayton (CUST_0057) between 2025-02-15 and 2025-07-31, involving high transaction volume and value, exceeding the regulatory threshold. The pattern of overcompensation in everyday transactions, such as $225.57 on 2025-03-20, is indicative of money laundering. This activity is inconsistent with the customer's profile and raises concerns under the Bank Secrecy Act, 31 CFR 1020.320 (BSA), and 12 CFR 21.11 (SAR Filing). The financial institution is filing this SAR in accordance with FinCEN SAR Instructions.",
+    "key_indicators": [
+      "high transaction volume",
+      "high transaction value",
+      "overcompensation in everyday transactions"
+    ],
+    "ai_reasoning": "Step 1: Customer Cindy Clayton has three active accounts with high average monthly balances. She has conducted 101 transactions with a total amount of $286,342.62, averaging $2,835.08 per transaction.\nStep 2: The customer's transactions include large amounts for everyday expenses such as groceries and gas station purchases. These transactions are unusually high for such expenses, indicating potential overcompensation to legitimize the source of funds.\nStep 3: These indicators align with the A..."
+  },
+  "regulatory_compliance": {
+    "citations": [
+      "31 CFR 1020.320 (BSA)",
+      "12 CFR 21.11 (SAR Filing)",
+      "FinCEN SAR Instructions"
+    ],
+    "narrative_word_count": 81,
+    "compliance_status": "approved",
+    "completeness_check": true
+  },
+  "audit_trail": {
+    "case_id": "2ea41ebc-a914-4155-9492-e940d36ecdde",
+    "processing_date": "2026-05-02T15:49:31.647742+00:00",
+    "ai_agents_used": [
+      "RiskAnalyst",
+      "ComplianceOfficer"
+    ],
+    "human_reviewer": "compliance_officer"
+  }
+}
