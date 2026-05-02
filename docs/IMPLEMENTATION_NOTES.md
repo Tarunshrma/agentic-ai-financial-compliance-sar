@@ -1,5 +1,7 @@
 # Implementation notes
 
+**On Udacity Vocareum, my routed API budget was exhausted, so I switched to the official OpenAI API for the rest of development and demo runs (`OPENAI_API_KEY`, default `https://api.openai.com/v1`; optional `OPENAI_BASE_URL` still supports Vocareum when credits are available).**
+
 This document summarizes **custom work completed on top of the Udacity Financial Services Agentic AI starter**. 
 
 ---
