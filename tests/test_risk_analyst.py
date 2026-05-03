@@ -7,12 +7,13 @@ Streamlined test suite for risk_analyst_agent.py module focusing on core functio
 import pytest
 import json
 import os
+from typing import List
+
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 
-# Import risk analyst components - these will work once students implement them
+# Foundation types used by parametrized scenario builders (must load even before agent probing)
 try:
-    from src.risk_analyst_agent import RiskAnalystAgent
     from src.foundation_sar import (
         RiskAnalystOutput,
         ExplainabilityLogger,
@@ -21,7 +22,20 @@ try:
         AccountData,
         TransactionData,
         RISK_LEVEL_CONFIDENCE_BANDS,
+        risk_analyst_output_parse_fallback,
     )
+except ImportError:  # pragma: no cover
+    RiskAnalystOutput = None  # type: ignore
+    ExplainabilityLogger = None  # type: ignore
+    CaseData = None  # type: ignore
+    CustomerData = None  # type: ignore
+    AccountData = None  # type: ignore
+    TransactionData = None  # type: ignore
+    RISK_LEVEL_CONFIDENCE_BANDS = {}
+    risk_analyst_output_parse_fallback = None  # type: ignore
+
+try:
+    from src.risk_analyst_agent import RiskAnalystAgent
     
     # Test if RiskAnalystAgent is actually implemented (not just empty pass statements)
     try:
@@ -76,14 +90,193 @@ if not RISK_ANALYST_IMPLEMENTED:
 
 
 def _risk_response_steps_for_classification(classification: str) -> list:
-    """Five CoT strings for mocked LLM payloads (one scenario per SAR type)."""
+    """Five CoT strings aligned to RiskAnalystOutput  (five framework steps per case type)."""
     return [
-        f"Data Review: fixture case written to exercise {classification} end-to-end parsing.",
-        f"Pattern Recognition: placeholder indicators consistent with {classification} narrative.",
-        f"Regulatory Mapping: generic BSA/SAR supervisory context for {classification}.",
-        f"Risk Quantification: confidence held at 0.8 for deterministic test assertion.",
-        f"Classification Decision: model output must carry label {classification}.",
+        f"Data Review: reviewed Scenario {classification} customer profile, balances, "
+        "and enumerated transactions for this case fixture only.",
+        f"Pattern Recognition: mapped transaction shapes to {classification}-style indicators "
+        "seen in staged test data.",
+        "Regulatory Mapping: tied observed behaviors to AML/BSA filing expectations "
+        "without asserting facts absent from CSV.",
+        f"Risk Quantification: midpoint confidence selected within the calibrated band "
+        f"paired with this scenario's risk tier.",
+        f"Classification Decision: commit to `{classification}` as the lone label versus alternatives.",
     ]
+
+
+def _customer_risk_for_scenario_level(risk_level: str) -> str:
+    if risk_level in ("Critical", "High"):
+        return "High"
+    if risk_level == "Medium":
+        return "Medium"
+    return "Low"
+
+
+def _scenario_case_for_classification(classification: str, risk_level: str) -> CaseData:
+    """
+    Distinct CaseData fixtures per SAR type so prompts and parsing tests exercise heterogeneous
+    transaction shapes (structuring vs layering vs benign mix, etc.).
+    """
+    cr = _customer_risk_for_scenario_level(risk_level)
+    customer = CustomerData(
+        customer_id="CUST_SCENARIO",
+        name=f"Scenario {classification}",
+        date_of_birth="1985-06-01",
+        ssn_last_4="5678",
+        address="Scenario Row, Testburg",
+        customer_since="2019-01-01",
+        risk_rating=cr,
+    )
+    account = AccountData(
+        account_id="ACC_SCENARIO",
+        customer_id="CUST_SCENARIO",
+        account_type="Checking",
+        opening_date="2019-02-01",
+        current_balance=125_000.0,
+        average_monthly_balance=45_000.0,
+        status="Active",
+    )
+
+    txs: List[TransactionData]
+    if classification == "Structuring":
+        txs = [
+            TransactionData(
+                transaction_id="TX_S1",
+                account_id="ACC_SCENARIO",
+                transaction_date="2025-02-03",
+                transaction_type="Cash_Deposit",
+                amount=2_955.00,
+                description="Cash under usual CTR scrutiny band",
+                method="Cash",
+                location="Branch_Downtown",
+            ),
+            TransactionData(
+                transaction_id="TX_S2",
+                account_id="ACC_SCENARIO",
+                transaction_date="2025-02-04",
+                transaction_type="Cash_Deposit",
+                amount=2_980.00,
+                description="Similar denomination sequencing",
+                method="Cash",
+                location="Branch_Downtown",
+            ),
+            TransactionData(
+                transaction_id="TX_S3",
+                account_id="ACC_SCENARIO",
+                transaction_date="2025-02-05",
+                transaction_type="Cash_Deposit",
+                amount=2_990.00,
+                description="Repeated sub-threshold structuring pattern",
+                method="Cash",
+                location="ATM_Network",
+            ),
+        ]
+    elif classification == "Sanctions":
+        txs = [
+            TransactionData(
+                transaction_id="TX_N1",
+                account_id="ACC_SCENARIO",
+                transaction_date="2025-03-10",
+                transaction_type="Wire_Transfer",
+                amount=185_000.0,
+                description="Outbound wire high-risk correspondent jurisdiction",
+                method="Swift",
+                location="Intl_Hub_A",
+            ),
+            TransactionData(
+                transaction_id="TX_N2",
+                account_id="ACC_SCENARIO",
+                transaction_date="2025-03-12",
+                transaction_type="Wire_Transfer",
+                amount=142_300.0,
+                description="Returned wire noted OFAC-style counterparty cue in memo",
+                method="Swift",
+            ),
+        ]
+    elif classification == "Fraud":
+        txs = [
+            TransactionData(
+                transaction_id="TX_F1",
+                account_id="ACC_SCENARIO",
+                transaction_date="2025-04-02",
+                transaction_type="ACH_Debit",
+                amount=22_450.0,
+                description="Sudden ACH pull inconsistent with payroll profile",
+                method="ACH",
+            ),
+            TransactionData(
+                transaction_id="TX_F2",
+                account_id="ACC_SCENARIO",
+                transaction_date="2025-04-02",
+                transaction_type="Wire_Transfer",
+                amount=19_995.0,
+                description="ATO-style outbound wire minutes after ACH debit",
+                method="Online",
+            ),
+        ]
+    elif classification == "Money_Laundering":
+        txs = [
+            TransactionData(
+                transaction_id="TX_M1",
+                account_id="ACC_SCENARIO",
+                transaction_date="2025-01-16",
+                transaction_type="Wire_Transfer",
+                amount=97_800.0,
+                description="Inbound from shell-style intermediary",
+                method="Wire",
+            ),
+            TransactionData(
+                transaction_id="TX_M2",
+                account_id="ACC_SCENARIO",
+                transaction_date="2025-01-18",
+                transaction_type="ACH_Credit",
+                amount=93_750.0,
+                description="Sweep to secondary DDA layering leg",
+                method="ACH",
+            ),
+            TransactionData(
+                transaction_id="TX_M3",
+                account_id="ACC_SCENARIO",
+                transaction_date="2025-01-20",
+                transaction_type="Wire_Transfer",
+                amount=91_250.0,
+                description="Outbound to unrelated entity same week",
+                method="Swift",
+            ),
+        ]
+    else:  # Other
+        txs = [
+            TransactionData(
+                transaction_id="TX_O1",
+                account_id="ACC_SCENARIO",
+                transaction_date="2025-06-02",
+                transaction_type="Debit_Purchase",
+                amount=42.87,
+                description="Coffee purchase",
+                method="Card",
+            ),
+            TransactionData(
+                transaction_id="TX_O2",
+                account_id="ACC_SCENARIO",
+                transaction_date="2025-06-03",
+                transaction_type="ACH_Credit",
+                amount=1_850.50,
+                description="Employer payroll ACH",
+                method="ACH",
+            ),
+        ]
+
+    return CaseData(
+        case_id=f"CASE_SCENARIO_{classification}_{risk_level}",
+        customer=customer,
+        accounts=[account],
+        transactions=txs,
+        case_created_at=datetime.now().isoformat(),
+        data_sources={
+            "test": "scenario_fixture",
+            "classification_fixture": classification,
+        },
+    )
 
 
 class TestRiskAnalystAgent:
@@ -237,41 +430,7 @@ class TestRiskAnalystAgent:
         logger = ExplainabilityLogger(log_file=os.devnull)
         agent = RiskAnalystAgent(mock_client, logger)
 
-        customer = CustomerData(
-            customer_id="CUST_MULTI",
-            name="Scenario Customer",
-            date_of_birth="1980-01-01",
-            ssn_last_4="1234",
-            address="123 Test St",
-            customer_since="2020-01-01",
-            risk_rating="Medium",
-        )
-        account = AccountData(
-            account_id="ACC_MULTI",
-            customer_id="CUST_MULTI",
-            account_type="Checking",
-            opening_date="2020-01-01",
-            current_balance=10000.0,
-            average_monthly_balance=8000.0,
-            status="Active",
-        )
-        transaction = TransactionData(
-            transaction_id="TXN_MULTI",
-            account_id="ACC_MULTI",
-            transaction_date="2025-01-01",
-            transaction_type="Wire_Transfer",
-            amount=5000.0,
-            description="Scenario transaction",
-            method="Wire",
-        )
-        case = CaseData(
-            case_id="CASE_CLASS_COVERAGE",
-            customer=customer,
-            accounts=[account],
-            transactions=[transaction],
-            case_created_at=datetime.now().isoformat(),
-            data_sources={"test": "classification_coverage"},
-        )
+        case = _scenario_case_for_classification(classification, risk_level)
 
         result = agent.analyze_case(case)
 
@@ -281,55 +440,74 @@ class TestRiskAnalystAgent:
         lo, hi = RISK_LEVEL_CONFIDENCE_BANDS[risk_level]
         assert lo <= result.confidence_score <= hi
         assert len(result.reasoning_steps) == 5
+        assert all(len(step.strip()) > 0 for step in result.reasoning_steps)
+        assert result.reasoning_steps == payload["reasoning_steps"]
+
+        msgs = mock_client.chat.completions.create.call_args.kwargs["messages"]
+        user_blob = msgs[1]["content"]
+        subtype_markers = {
+            "Structuring": ("Cash_Deposit", "$2,955.00"),
+            "Sanctions": ("Wire_Transfer", "$185,000"),
+            "Fraud": ("ACH_Debit", "ATO-style"),
+            "Money_Laundering": ("shell-style", "$97,800"),
+            "Other": ("Coffee purchase", "$42.87"),
+        }
+        a, b = subtype_markers[classification]
+        assert a in user_blob and b in user_blob
+
         mock_client.chat.completions.create.assert_called_once()
 
     @pytest.mark.skipif(not RISK_ANALYST_IMPLEMENTED, reason="Risk Analyst Agent not implemented yet")
     def test_analyze_case_json_fallback_after_failed_recovery(self):
-        """Invalid assistant JSON twice yields conservative fallback; audit log records json_recovery fallback."""
-        # Setup mock with invalid JSON
+        """Malformed primary and retry payloads → canonical fallback (foundation contract); audit: json_recovery fallback."""
         mock_client = Mock()
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = "Invalid JSON response without proper structure"
-        mock_client.chat.completions.create.return_value = mock_response
-        
+        bogus_primary = Mock()
+        bogus_primary.choices = [Mock()]
+        bogus_primary.choices[0].message.content = (
+            "Invalid JSON response without proper structure"
+        )
+        bogus_retry = Mock()
+        bogus_retry.choices = [Mock()]
+        bogus_retry.choices[0].message.content = "{\"classification\": Broken trailing"
+        mock_client.chat.completions.create.side_effect = [bogus_primary, bogus_retry]
+
         logger = ExplainabilityLogger("test_json_error.jsonl")
         agent = RiskAnalystAgent(mock_client, logger)
-        
-        # Create minimal test case
+
         customer = CustomerData(
             customer_id="CUST_TEST",
             name="Test Customer",
             date_of_birth="1980-01-01",
-            ssn_last_4="1234", 
+            ssn_last_4="1234",
             address="123 Test St",
             customer_since="2020-01-01",
-            risk_rating="Low"
+            risk_rating="Low",
         )
-        
+
         case = CaseData(
-            case_id="CASE_ERROR",
+            case_id="CASE_ERROR_FALLBACK",
             customer=customer,
             accounts=[],
-            transactions=[TransactionData(
-                transaction_id="TXN_ERROR",
-                account_id="ACC_ERROR",
-                transaction_date="2025-01-01",
-                transaction_type="Test",
-                amount=100.0,
-                description="Test transaction",
-                method="Test"
-            )],
+            transactions=[
+                TransactionData(
+                    transaction_id="TXN_ERROR",
+                    account_id="ACC_ERROR",
+                    transaction_date="2025-01-01",
+                    transaction_type="Test",
+                    amount=100.0,
+                    description="Test transaction",
+                    method="Test",
+                )
+            ],
             case_created_at=datetime.now().isoformat(),
-            data_sources={"test": "data"}
+            data_sources={"test": "data"},
         )
-        
-        # Retry + fallback: workflow continues with degraded, auditable RiskAnalystOutput
-        bad = mock_response  # reused for primary + corrective turn
-        mock_client.chat.completions.create.return_value = bad
+
+        canonical = risk_analyst_output_parse_fallback(case.case_id)
         result = agent.analyze_case(case)
 
         assert isinstance(result, RiskAnalystOutput)
+        assert result.model_dump(include={"classification", "confidence_score", "reasoning_steps", "key_indicators", "risk_level"}) == canonical.model_dump(include={"classification", "confidence_score", "reasoning_steps", "key_indicators", "risk_level"})
         assert result.classification == "Other"
         assert "parsing_failed" in result.key_indicators
         assert mock_client.chat.completions.create.call_count == 2
@@ -337,8 +515,7 @@ class TestRiskAnalystAgent:
         assert len(logger.entries) == 1
         assert logger.entries[0]["success"] is True
         assert logger.entries[0]["outputs"]["json_recovery"]["path"] == "fallback"
-        
-        # Cleanup
+
         if os.path.exists("test_json_error.jsonl"):
             os.remove("test_json_error.jsonl")
 
@@ -407,6 +584,70 @@ class TestRiskAnalystAgent:
 
         if os.path.exists("test_retry_ok.jsonl"):
             os.remove("test_retry_ok.jsonl")
+
+    @pytest.mark.skipif(not RISK_ANALYST_IMPLEMENTED, reason="Risk Analyst Agent not implemented yet")
+    def test_analyze_case_fallback_after_valid_json_fails_contract_twice(self):
+        """Parsable JSON that violates RiskAnalystOutput (wrong reasoning_steps length) ×2 → fallback fixture."""
+        invalid_payload = {
+            "classification": "Other",
+            "confidence_score": 0.42,
+            "reasoning_steps": [
+                "Data Review terse.",
+                "Pattern Recognition terse.",
+                "Regulatory terse.",
+            ],
+            "key_indicators": ["truncated_contract"],
+            "risk_level": "Low",
+        }
+        stale_json = json.dumps(invalid_payload)
+
+        def _msg(content):
+            m = Mock()
+            m.choices = [Mock()]
+            m.choices[0].message.content = content
+            return m
+
+        mock_client = Mock()
+        mock_client.chat.completions.create.side_effect = [
+            _msg(stale_json),
+            _msg(stale_json),
+        ]
+        logger = ExplainabilityLogger(log_file=os.devnull)
+        agent = RiskAnalystAgent(mock_client, logger)
+        customer = CustomerData(
+            customer_id="CUST_BAD_SCHEMA",
+            name="Bad Schema Customer",
+            date_of_birth="1982-07-07",
+            ssn_last_4="9988",
+            address="Somewhere Rd",
+            customer_since="2018-01-01",
+            risk_rating="Low",
+        )
+        case = CaseData(
+            case_id="CASE_BAD_SCHEMA_TWICE",
+            customer=customer,
+            accounts=[],
+            transactions=[
+                TransactionData(
+                    transaction_id="TX_BAD",
+                    account_id="ACC_BAD",
+                    transaction_date="2025-05-05",
+                    transaction_type="Debit_Purchase",
+                    amount=81.05,
+                    description="coffee",
+                    method="Card",
+                )
+            ],
+            case_created_at=datetime.now().isoformat(),
+            data_sources={"fixture": "schema_edge"},
+        )
+        canonical = risk_analyst_output_parse_fallback(case.case_id)
+        result = agent.analyze_case(case)
+        assert mock_client.chat.completions.create.call_count == 2
+        assert result.reasoning_steps == canonical.reasoning_steps
+        assert result.key_indicators == canonical.key_indicators
+        assert logger.entries[-1]["outputs"]["json_recovery"]["path"] == "fallback"
+
 
     @pytest.mark.skipif(not RISK_ANALYST_IMPLEMENTED, reason="Risk Analyst Agent not implemented yet")
     def test_analyze_case_recovers_trailing_comma_without_retry(self):
